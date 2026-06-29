@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BOFiP Assistant — Recherche</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #1a1a1a;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --chip-bg: #f3f4f6;
+      --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 48px 20px 80px;
+    }
+
+    header h1 {
+      font-size: 1.75rem;
+      font-weight: 650;
+      margin: 0 0 4px;
+    }
+
+    header p {
+      margin: 0 0 28px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .search-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .search-row input[type="text"] {
+      flex: 1;
+      padding: 12px 14px;
+      font-size: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .search-row input[type="text"]:focus {
+      border-color: var(--accent);
+    }
+
+    .search-row button {
+      padding: 12px 22px;
+      font-size: 1rem;
+      font-weight: 550;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .search-row button:hover { background: var(--accent-hover); }
+    .search-row button:disabled { opacity: 0.6; cursor: default; }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 32px;
+    }
+
+    .chip {
+      padding: 6px 14px;
+      font-size: 0.875rem;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--chip-bg);
+      color: var(--text);
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.15s;
+    }
+
+    .chip[aria-pressed="true"] {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 20px;
+      min-height: 1.2em;
+    }
+
+    .results {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px 20px;
+      box-shadow: var(--card-shadow);
+      transition: border-color 0.15s;
+    }
+
+    .card:hover { border-color: #cbd5e1; }
+
+    .card-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+
+    .card-head .boi-id {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--accent);
+      font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+    }
+
+    .card-head .score {
+      font-size: 0.75rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .card h2 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin: 0 0 8px;
+    }
+
+    .card .extrait {
+      color: #374151;
+      font-size: 0.92rem;
+      margin: 0 0 12px;
+    }
+
+    .card a.lien {
+      font-size: 0.875rem;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .card a.lien:hover { text-decoration: underline; }
+
+    .empty {
+      color: var(--muted);
+      text-align: center;
+      padding: 40px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>BOFiP Assistant</h1>
+      <p>Recherche dans le Bulletin officiel des finances publiques.</p>
+    </header>
+
+    <form class="search-row" id="search-form">
+      <input
+        type="text"
+        id="query"
+        placeholder="Rechercher (ex. : crédit d'impôt, TVA déductible…)"
+        autocomplete="off"
+        autofocus
+      />
+      <button type="submit" id="submit-btn">Rechercher</button>
+    </form>
+
+    <div class="filters" id="filters" role="group" aria-label="Filtrer par domaine">
+      <!-- Les puces de domaine sont injectées en JS -->
+    </div>
+
+    <div class="status" id="status"></div>
+
+    <div class="results" id="results"></div>
+  </div>
+
+  <script>
+    const DOMAINES = ["IS", "IR", "TVA", "BIC", "BNC", "RPPM", "ENR", "PAT"];
+
+    const filtersEl = document.getElementById("filters");
+    const formEl = document.getElementById("search-form");
+    const queryEl = document.getElementById("query");
+    const submitBtn = document.getElementById("submit-btn");
+    const statusEl = document.getElementById("status");
+    const resultsEl = document.getElementById("results");
+
+    let activeDomaine = null;
+
+    // Construction des puces de filtre
+    DOMAINES.forEach((dom) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip";
+      chip.textContent = dom;
+      chip.setAttribute("aria-pressed", "false");
+      chip.addEventListener("click", () => {
+        const isActive = activeDomaine === dom;
+        // Réinitialise toutes les puces
+        filtersEl.querySelectorAll(".chip").forEach((c) =>
+          c.setAttribute("aria-pressed", "false")
+        );
+        if (isActive) {
+          activeDomaine = null;
+        } else {
+          activeDomaine = dom;
+          chip.setAttribute("aria-pressed", "true");
+        }
+      });
+      filtersEl.appendChild(chip);
+    });
+
+    formEl.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const q = queryEl.value.trim();
+      if (!q) {
+        queryEl.focus();
+        return;
+      }
+      await search(q);
+    });
+
+    function escapeHtml(str) {
+      return String(str ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    async function search(q) {
+      submitBtn.disabled = true;
+      statusEl.textContent = "Recherche en cours…";
+      resultsEl.innerHTML = "";
+
+      const params = new URLSearchParams({ q, limit: "20" });
+      if (activeDomaine) params.set("domaine", activeDomaine);
+
+      try {
+        const res = await fetch(`/.netlify/functions/bofip?${params}`);
+        if (!res.ok) {
+          throw new Error(`Erreur ${res.status}`);
+        }
+        const data = await res.json();
+        // Tolère plusieurs formes de réponse (tableau direct ou objet enveloppant)
+        const items = Array.isArray(data)
+          ? data
+          : data.results || data.hits || data.data || [];
+
+        renderResults(items);
+      } catch (err) {
+        statusEl.textContent = `Une erreur est survenue : ${err.message}`;
+      } finally {
+        submitBtn.disabled = false;
+      }
+    }
+
+    function renderResults(items) {
+      if (!items.length) {
+        statusEl.textContent = "";
+        resultsEl.innerHTML =
+          '<div class="empty">Aucun résultat trouvé.</div>';
+        return;
+      }
+
+      statusEl.textContent = `${items.length} résultat${
+        items.length > 1 ? "s" : ""
+      }`;
+
+      resultsEl.innerHTML = items
+        .map((item) => {
+          const boiId = escapeHtml(item.boi_id ?? "");
+          const titre = escapeHtml(item.titre ?? "Sans titre");
+          const extrait = escapeHtml(item.extrait ?? "");
+          const url = item.url_bofip ?? "#";
+          const score =
+            item.score != null ? Number(item.score).toFixed(2) : null;
+
+          return `
+            <article class="card">
+              <div class="card-head">
+                ${boiId ? `<span class="boi-id">${boiId}</span>` : "<span></span>"}
+                ${score != null ? `<span class="score">Score : ${score}</span>` : ""}
+              </div>
+              <h2>${titre}</h2>
+              ${extrait ? `<p class="extrait">${extrait}</p>` : ""}
+              <a class="lien" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
+                Consulter sur le BOFiP →
+              </a>
+            </article>
+          `;
+        })
+        .join("");
+    }
+  </script>
+</body>
+</html>

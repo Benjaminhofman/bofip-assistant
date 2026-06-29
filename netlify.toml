@@ -1,0 +1,18 @@
+# Configuration Netlify
+# Documentation : https://docs.netlify.com/configure-builds/file-based-configuration/
+
+[build]
+  # Dossier publié (racine du projet ici)
+  publish = "."
+  # Dossier contenant les fonctions serverless
+  functions = "netlify/functions"
+
+[functions]
+  # Runtime Node.js pour les fonctions
+  node_bundler = "esbuild"
+
+# Redirection optionnelle vers la page d'accueil pour les SPA
+# [[redirects]]
+#   from = "/*"
+#   to = "/index.html"
+#   status = 200
