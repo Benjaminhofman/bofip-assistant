@@ -45,6 +45,9 @@ exports.handler = async function (event) {
     }
   }
 
+  console.log("URL appelée:", upstreamUrl.toString());
+  console.log("Clé envoyée:", apiKey.substring(0, 8) + "...");
+
   try {
     const upstreamRes = await fetch(upstreamUrl, {
       method: "GET",
