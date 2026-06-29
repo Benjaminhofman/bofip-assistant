@@ -1,0 +1,9 @@
+{
+  "name": "bofip-assistant",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Assistant BOFiP avec proxy Netlify Functions vers l'API BOFiP",
+  "dependencies": {
+    "node-fetch": "^2.7.0"
+  }
+}

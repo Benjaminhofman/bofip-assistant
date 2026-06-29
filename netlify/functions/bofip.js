@@ -1,6 +1,8 @@
 // Proxy GET vers l'API BOFiP (endpoint: /.netlify/functions/bofip)
 // Transmet q, domaine, limit depuis la query string et injecte la clé API.
 
+const fetch = require("node-fetch");
+
 const UPSTREAM = "https://api.bofip.dev/v1/search";
 
 const CORS_HEADERS = {
