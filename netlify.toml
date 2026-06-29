@@ -7,6 +7,10 @@
   # Dossier contenant les fonctions serverless
   functions = "netlify/functions"
 
+[build.environment]
+  # Version de Node.js utilisée pour le build et les fonctions
+  NODE_VERSION = "18"
+
 [functions]
   # Runtime Node.js pour les fonctions
   node_bundler = "esbuild"
