@@ -9,7 +9,7 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
-module.exports = async function (event) {
+exports.handler = async function (event) {
   console.log("API KEY:", process.env.BOFIP_API_KEY ? "présente" : "absente");
 
   // Préflight CORS
