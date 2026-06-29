@@ -9,36 +9,35 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
-export default async (request, context) => {
+module.exports = async function (event) {
   // Préflight CORS
-  if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  if (event.httpMethod === "OPTIONS") {
+    return { statusCode: 204, headers: CORS_HEADERS, body: "" };
   }
 
-  if (request.method !== "GET") {
-    return new Response(JSON.stringify({ error: "Méthode non autorisée" }), {
-      status: 405,
+  if (event.httpMethod !== "GET") {
+    return {
+      statusCode: 405,
       headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-    });
+      body: JSON.stringify({ error: "Méthode non autorisée" }),
+    };
   }
 
   const apiKey = process.env.BOFIP_API_KEY;
   if (!apiKey) {
-    return new Response(
-      JSON.stringify({ error: "Clé API BOFIP_API_KEY non configurée" }),
-      {
-        status: 500,
-        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-      }
-    );
+    return {
+      statusCode: 500,
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+      body: JSON.stringify({ error: "Clé API BOFIP_API_KEY non configurée" }),
+    };
   }
 
   // Construction de l'URL amont en ne transmettant que les paramètres attendus
-  const incoming = new URL(request.url);
+  const params = event.queryStringParameters || {};
   const upstreamUrl = new URL(UPSTREAM);
   for (const param of ["q", "domaine", "limit"]) {
-    const value = incoming.searchParams.get(param);
-    if (value !== null) {
+    const value = params[param];
+    if (value !== undefined && value !== null) {
       upstreamUrl.searchParams.set(param, value);
     }
   }
@@ -53,21 +52,23 @@ export default async (request, context) => {
     });
 
     const body = await upstreamRes.text();
-    return new Response(body, {
-      status: upstreamRes.status,
+    return {
+      statusCode: upstreamRes.status,
       headers: {
         ...CORS_HEADERS,
         "Content-Type":
           upstreamRes.headers.get("Content-Type") || "application/json",
       },
-    });
+      body,
+    };
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: "Échec de la requête amont", detail: String(err) }),
-      {
-        status: 502,
-        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-      }
-    );
+    return {
+      statusCode: 502,
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        error: "Échec de la requête amont",
+        detail: String(err),
+      }),
+    };
   }
 };
