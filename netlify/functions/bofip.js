@@ -10,6 +10,8 @@ const CORS_HEADERS = {
 };
 
 module.exports = async function (event) {
+  console.log("API KEY:", process.env.BOFIP_API_KEY ? "présente" : "absente");
+
   // Préflight CORS
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 204, headers: CORS_HEADERS, body: "" };
