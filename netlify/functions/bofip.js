@@ -11,6 +11,7 @@ const CORS_HEADERS = {
 
 exports.handler = async function (event) {
   console.log("API KEY:", process.env.BOFIP_API_KEY ? "présente" : "absente");
+  console.log("KEY VALUE:", process.env.BOFIP_API_KEY);
 
   // Préflight CORS
   if (event.httpMethod === "OPTIONS") {
