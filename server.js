@@ -195,6 +195,25 @@ Rédige une synthèse fiscale claire et structurée en français, en quelques ph
   }
 });
 
+const SYSTEM_SYNTHESE = `Tu es un assistant de recherche en doctrine fiscale française destiné à des experts-comptables, juristes et fiscalistes. Tu t'appuies EXCLUSIVEMENT sur les textes et extraits BOFiP fournis ci-dessous. Tu ne mobilises AUCUNE connaissance externe.
+
+NATURE DE LA SOURCE
+- Tu commentes la DOCTRINE ADMINISTRATIVE (BOFiP), opposable à l'administration mais qui ne se substitue ni à la loi (CGI) ni à la jurisprudence. Qualifie tes énoncés (« la doctrine administrative précise que… »). Ne présente jamais un commentaire BOFiP comme une règle légale absolue.
+
+CITATION
+- Cite SYSTÉMATIQUEMENT chaque affirmation. Quand le numéro de paragraphe est identifiable dans le texte fourni, cite [BOI-XXX-XXX-XX § N] ; sinon [BOI-XXX-XXX-XX]. Aucune affirmation sans source.
+- Tu ne peux citer QUE les BOI listés comme disponibles dans le contexte. N'invente jamais d'identifiant ni de paragraphe.
+- Quand la doctrine renvoie à un article du CGI, mentionne-le (« sur le fondement de l'article X du CGI ») en précisant que la base légale est à vérifier dans le texte légal, hors périmètre de cet outil.
+
+VERSION ET ACTUALITÉ
+- Tiens compte des notes de version fournies. Signale tout BOI rapporté, abrogé, ou disposant d'une version plus récente. Précise la date de la version analysée.
+
+RIGUEUR PROFESSIONNELLE
+- Structure la synthèse (conditions, régime, exceptions). Distingue conditions cumulatives et alternatives.
+- Signale (a) les points où les BOI se complètent ou se CONTREDISENT ; (b) les angles pour lesquels AUCUN texte fourni n'apporte de réponse.
+- Si une information n'est pas dans les textes fournis, écris-le. Aucune extrapolation.
+- Reste strictement factuel et neutre : synthèse doctrinale, jamais de conseil personnalisé.`;
+
 const SYSTEM_CADRAGE = `Tu es un assistant de recherche en doctrine fiscale française pour un professionnel du chiffre et du droit. L'utilisateur ouvre un nouveau sujet. On te fournit ci-dessous des EXTRAITS de la doctrine BOFiP réellement trouvée sur ce sujet.
 - Appuie-toi sur ces extraits pour identifier les VRAIES distinctions doctrinales qui font varier la réponse (régimes, conditions cumulatives ou alternatives, seuils, cas particuliers, options) telles qu'elles apparaissent dans la doctrine actuelle.
 - Pose exactement TROIS questions de clarification numérotées (ou QUATRE si le sujet est d'un niveau expert le justifiant), ancrées dans ces distinctions réelles. Rien d'autre : pas d'ébauche de réponse, pas de synthèse, pas encore de citation.
@@ -208,6 +227,43 @@ const SYSTEM_CLASSIFICATION = `Tu es un routeur pour un assistant de doctrine fi
 - niveau_expert=true si le sujet est techniquement pointu (démembrement, intégration fiscale, prix de transfert, régimes optionnels, dispositifs de faveur) justifiant une précision supplémentaire.
 - requete_recherche : mots-clés doctrinaux pertinents dans TOUS les cas (en cadrage, déduis-les du sujet brut ; en synthèse, du sujet + précisions). Jamais null si un sujet fiscal est identifiable.
 - domaine : code domaine fiscal (IS, IR, TVA, BIC, BNC, RPPM, ENR, PAT) si clairement identifiable, sinon null.`;
+
+function buildContextSynthese(bois, notesVersion) {
+  const avecTexte = bois.filter((b) => b.texte_complet);
+  const enExtrait = bois.filter((b) => !b.texte_complet && b.extrait);
+  const allIds = bois.map((b) => b.boi_id).filter(Boolean);
+
+  let ctx = "TEXTES BOFiP DISPONIBLES DANS LE CONTEXTE\n";
+  ctx += "==========================================\n\n";
+
+  if (avecTexte.length) {
+    ctx += "── Textes complets ──\n\n";
+    for (const b of avecTexte) {
+      ctx += `[${b.boi_id}] — ${b.titre}${b.date_publication ? ` (${b.date_publication})` : ""}\n`;
+      ctx += `---\n${b.texte_complet}\n---\n\n`;
+    }
+  }
+
+  if (enExtrait.length) {
+    ctx += "── Extraits ──\n\n";
+    for (const b of enExtrait) {
+      ctx += `[${b.boi_id}] — ${b.titre}${b.date_publication ? ` (${b.date_publication})` : ""}\n`;
+      ctx += `${b.extrait}\n\n`;
+    }
+  }
+
+  if (notesVersion) {
+    ctx += "NOTES DE VERSION\n";
+    ctx += "================\n";
+    ctx += notesVersion + "\n\n";
+  }
+
+  ctx += "BOI DISPONIBLES DANS CE CONTEXTE (liste exhaustive — ne citer que ceux-ci)\n";
+  ctx += "===========================================================================\n";
+  ctx += allIds.join(", ");
+
+  return ctx;
+}
 
 function buildNoteVersion(boiId, datePublication, historique) {
   const versions = !historique
@@ -443,8 +499,41 @@ app.post("/chat", async (req, res) => {
         .map((b) => b.note_version)
         .join("\n");
 
-      // Appel OpenAI synthese : à implémenter
-      return res.json({ classification, bois_synthese, notes_version });
+      // Appel OpenAI synthèse
+      const contextSynthese = buildContextSynthese(bois_synthese, notes_version);
+      const lastMsg = messages[messages.length - 1];
+      const augmentedMessages = [
+        { role: "system", content: SYSTEM_SYNTHESE },
+        ...messages.slice(0, -1),
+        {
+          role: lastMsg.role,
+          content: `${contextSynthese}\n\n---\n\nDemande : ${lastMsg.content}`,
+        },
+      ];
+
+      const openaiRes = await fetch(OPENAI_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${openaiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: MODELE_SYNTHESE,
+          temperature: 0,
+          messages: augmentedMessages,
+        }),
+        signal: AbortSignal.timeout(TIMEOUT_OPENAI),
+      });
+
+      const data = await openaiRes.json();
+      if (!openaiRes.ok) throw new Error(data.error?.message || `OpenAI ${openaiRes.status}`);
+
+      return res.json({
+        reponse: data.choices[0].message.content,
+        phase: "synthese",
+        bois_synthese,
+        notes_version,
+      });
     }
 
     res.json({ classification });
