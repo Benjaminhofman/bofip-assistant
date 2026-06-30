@@ -333,7 +333,69 @@ app.post("/chat", async (req, res) => {
       });
     }
 
-    // Phase synthese : à implémenter
+    if (classification.phase === "synthese") {
+      const domaine = classification.domaine || filtre_domaine || null;
+
+      // 1. Recherche BOFiP
+      const rawItems = await searchBofip(
+        classification.requete_recherche,
+        domaine,
+        MAX_BOI_EXTRAITS + 10
+      );
+
+      // 2. Tri par date décroissante
+      rawItems.sort((a, b) => {
+        const da = a.date_publication ? new Date(a.date_publication) : new Date(0);
+        const db = b.date_publication ? new Date(b.date_publication) : new Date(0);
+        return db - da;
+      });
+
+      // 3. MAX_BOI_EXTRAITS premiers + tout boi_id des paniers non déjà présent
+      const selection = rawItems.slice(0, MAX_BOI_EXTRAITS);
+      const selectionIds = new Set(selection.map((i) => i.boi_id));
+
+      for (const entry of paniers_boi || []) {
+        const boiId = typeof entry === "string" ? entry : entry?.boi_id;
+        if (boiId && !selectionIds.has(boiId)) {
+          const found = rawItems.find((i) => i.boi_id === boiId);
+          selection.push(
+            found || { boi_id: boiId, titre: "", extrait: "", url_bofip: null, date_publication: null }
+          );
+          selectionIds.add(boiId);
+        }
+      }
+
+      // 4. Texte complet (tronqué) pour les MAX_BOI_TEXTE_COMPLET premiers, extrait court pour les autres
+      const bois_synthese = await Promise.all(
+        selection.map(async (item, i) => {
+          if (i < MAX_BOI_TEXTE_COMPLET) {
+            const complet = await getBoiComplet(item.boi_id);
+            const raw = complet &&
+              (complet.texte || complet.contenu || complet.text || complet.body || null);
+            return {
+              boi_id: item.boi_id,
+              titre: item.titre || complet?.titre || "",
+              url_bofip: item.url_bofip || complet?.url_bofip || null,
+              date_publication: item.date_publication || complet?.date_publication || null,
+              texte_complet: raw ? String(raw).slice(0, TRONCATURE_BOI) : null,
+              extrait: item.extrait || null,
+            };
+          }
+          return {
+            boi_id: item.boi_id,
+            titre: item.titre,
+            extrait: item.extrait,
+            url_bofip: item.url_bofip,
+            date_publication: item.date_publication,
+            texte_complet: null,
+          };
+        })
+      );
+
+      // Appel OpenAI synthese : à implémenter
+      return res.json({ classification, bois_synthese });
+    }
+
     res.json({ classification });
   } catch (err) {
     res.status(502).json({ error: "Erreur classification", detail: String(err) });
