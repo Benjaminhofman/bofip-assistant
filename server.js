@@ -195,6 +195,58 @@ Rédige une synthèse fiscale claire et structurée en français, en quelques ph
   }
 });
 
+const SYSTEM_CLASSIFICATION = `Tu es un routeur pour un assistant de doctrine fiscale destiné à des professionnels (experts-comptables, juristes, fiscalistes). À partir de l'historique, réponds UNIQUEMENT en JSON valide.
+- phase='cadrage' si l'utilisateur ouvre un NOUVEAU sujet fiscal pas encore clarifié (ou premier message).
+- phase='synthese' s'il répond aux questions de clarification OU pose un suivi sur un sujet déjà traité.
+- niveau_expert=true si le sujet est techniquement pointu (démembrement, intégration fiscale, prix de transfert, régimes optionnels, dispositifs de faveur) justifiant une précision supplémentaire.
+- requete_recherche : mots-clés doctrinaux pertinents dans TOUS les cas (en cadrage, déduis-les du sujet brut ; en synthèse, du sujet + précisions). Jamais null si un sujet fiscal est identifiable.
+- domaine : code domaine fiscal (IS, IR, TVA, BIC, BNC, RPPM, ENR, PAT) si clairement identifiable, sinon null.`;
+
+async function classifier(messages, openaiKey) {
+  const res = await fetch(OPENAI_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${openaiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: MODELE_CLASSIFICATION,
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: SYSTEM_CLASSIFICATION },
+        ...messages,
+      ],
+    }),
+    signal: AbortSignal.timeout(TIMEOUT_OPENAI),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || `OpenAI ${res.status}`);
+  return JSON.parse(data.choices[0].message.content);
+}
+
+app.post("/chat", async (req, res) => {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey) {
+    return res.status(500).json({ error: "Clé OPENAI_API_KEY non configurée" });
+  }
+
+  const { messages, paniers_boi, filtre_domaine } = req.body;
+  if (!messages || !messages.length) {
+    return res.status(400).json({ error: "messages requis" });
+  }
+
+  try {
+    const classification = await classifier(messages, openaiKey);
+    console.log("Classification:", JSON.stringify(classification));
+
+    // Suite à implémenter selon la phase
+    res.json({ classification });
+  } catch (err) {
+    res.status(502).json({ error: "Erreur classification", detail: String(err) });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Serveur BOFiP à l'écoute sur le port ${PORT}`);
   console.log("BOFIP_API_KEY présente au démarrage:", !!process.env.BOFIP_API_KEY);
