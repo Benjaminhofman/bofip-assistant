@@ -195,12 +195,38 @@ Rédige une synthèse fiscale claire et structurée en français, en quelques ph
   }
 });
 
+const SYSTEM_CADRAGE = `Tu es un assistant de recherche en doctrine fiscale française pour un professionnel du chiffre et du droit. L'utilisateur ouvre un nouveau sujet. On te fournit ci-dessous des EXTRAITS de la doctrine BOFiP réellement trouvée sur ce sujet.
+- Appuie-toi sur ces extraits pour identifier les VRAIES distinctions doctrinales qui font varier la réponse (régimes, conditions cumulatives ou alternatives, seuils, cas particuliers, options) telles qu'elles apparaissent dans la doctrine actuelle.
+- Pose exactement TROIS questions de clarification numérotées (ou QUATRE si le sujet est d'un niveau expert le justifiant), ancrées dans ces distinctions réelles. Rien d'autre : pas d'ébauche de réponse, pas de synthèse, pas encore de citation.
+- Formule des questions de niveau professionnel, précises.
+- Si les extraits fournis sont vides ou hors sujet, pose des questions de cadrage fondées sur les familles de distinctions usuelles (nature et régime du contribuable, conditions, cas particulier, dispositif visé) et indique que la doctrine sera recherchée une fois la demande précisée.
+- Termine en invitant l'utilisateur à répondre.`;
+
 const SYSTEM_CLASSIFICATION = `Tu es un routeur pour un assistant de doctrine fiscale destiné à des professionnels (experts-comptables, juristes, fiscalistes). À partir de l'historique, réponds UNIQUEMENT en JSON valide.
 - phase='cadrage' si l'utilisateur ouvre un NOUVEAU sujet fiscal pas encore clarifié (ou premier message).
 - phase='synthese' s'il répond aux questions de clarification OU pose un suivi sur un sujet déjà traité.
 - niveau_expert=true si le sujet est techniquement pointu (démembrement, intégration fiscale, prix de transfert, régimes optionnels, dispositifs de faveur) justifiant une précision supplémentaire.
 - requete_recherche : mots-clés doctrinaux pertinents dans TOUS les cas (en cadrage, déduis-les du sujet brut ; en synthèse, du sujet + précisions). Jamais null si un sujet fiscal est identifiable.
 - domaine : code domaine fiscal (IS, IR, TVA, BIC, BNC, RPPM, ENR, PAT) si clairement identifiable, sinon null.`;
+
+async function searchBofip(q, domaine, limit) {
+  const apiKey = process.env.BOFIP_API_KEY;
+  if (!apiKey || !q) return [];
+  try {
+    const url = new URL(UPSTREAM);
+    url.searchParams.set("q", q);
+    url.searchParams.set("limit", String(limit));
+    if (domaine) url.searchParams.set("domaine", domaine);
+    const res = await fetch(url, {
+      headers: { ...BOFIP_HEADERS, "X-API-Key": apiKey },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : data.results || data.hits || data.data || [];
+  } catch {
+    return [];
+  }
+}
 
 async function classifier(messages, openaiKey) {
   const res = await fetch(OPENAI_URL, {
@@ -240,7 +266,74 @@ app.post("/chat", async (req, res) => {
     const classification = await classifier(messages, openaiKey);
     console.log("Classification:", JSON.stringify(classification));
 
-    // Suite à implémenter selon la phase
+    if (classification.phase === "cadrage") {
+      // Recherche BOFiP avec les mots-clés déduits
+      const rawItems = await searchBofip(
+        classification.requete_recherche,
+        classification.domaine || filtre_domaine || null,
+        MAX_BOI_CADRAGE + 5
+      );
+
+      // Tri par date_publication décroissante
+      const sorted = rawItems.slice().sort((a, b) => {
+        const da = a.date_publication ? new Date(a.date_publication) : new Date(0);
+        const db = b.date_publication ? new Date(b.date_publication) : new Date(0);
+        return db - da;
+      });
+
+      // Garde MAX_BOI_CADRAGE premiers, extraits seulement
+      const boi_pistes = sorted.slice(0, MAX_BOI_CADRAGE).map((item) => ({
+        boi_id: item.boi_id,
+        titre: item.titre,
+        extrait: item.extrait,
+        url_bofip: item.url_bofip,
+        date_publication: item.date_publication,
+      }));
+
+      // Contexte injecté avant la question de l'utilisateur
+      const contextCadrage = boi_pistes.length
+        ? boi_pistes
+            .map((item, i) => `[${i + 1}] ${item.boi_id} — ${item.titre}\n${item.extrait || ""}`)
+            .join("\n\n")
+        : "";
+
+      const lastMsg = messages[messages.length - 1];
+      const augmentedMessages = [
+        { role: "system", content: SYSTEM_CADRAGE },
+        ...messages.slice(0, -1),
+        {
+          role: lastMsg.role,
+          content: boi_pistes.length
+            ? `EXTRAITS BOFiP pertinents :\n\n${contextCadrage}\n\n---\n\nDemande : ${lastMsg.content}`
+            : lastMsg.content,
+        },
+      ];
+
+      const openaiRes = await fetch(OPENAI_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${openaiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: MODELE_SYNTHESE,
+          temperature: 0,
+          messages: augmentedMessages,
+        }),
+        signal: AbortSignal.timeout(TIMEOUT_OPENAI),
+      });
+
+      const data = await openaiRes.json();
+      if (!openaiRes.ok) throw new Error(data.error?.message || `OpenAI ${openaiRes.status}`);
+
+      return res.json({
+        reponse: data.choices[0].message.content,
+        phase: "cadrage",
+        boi_pistes,
+      });
+    }
+
+    // Phase synthese : à implémenter
     res.json({ classification });
   } catch (err) {
     res.status(502).json({ error: "Erreur classification", detail: String(err) });
