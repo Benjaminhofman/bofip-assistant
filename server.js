@@ -17,6 +17,68 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const UPSTREAM = "https://api.bofip.dev/v1/search";
 
+// --- Config ---
+const MODELE_CLASSIFICATION = "gpt-4o-mini";
+const MODELE_SYNTHESE = "gpt-4o";
+const MAX_BOI_TEXTE_COMPLET = 3;
+const MAX_BOI_EXTRAITS = 5;
+const MAX_BOI_CADRAGE = 6;
+const TRONCATURE_BOI = 8000;
+const TIMEOUT_OPENAI = 30000;
+
+// --- Caches en mémoire avec TTL 24 h ---
+const TTL = 24 * 60 * 60 * 1000;
+
+const cacheBoi = new Map();       // boi_id → { data, expireAt }
+const cacheHistorique = new Map(); // boi_id → { data, expireAt }
+
+const BOFIP_HEADERS = {
+  Accept: "application/json",
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+};
+
+async function getBoiComplet(id) {
+  const now = Date.now();
+  const cached = cacheBoi.get(id);
+  if (cached && cached.expireAt > now) return cached.data;
+
+  const apiKey = process.env.BOFIP_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const res = await fetch(`https://api.bofip.dev/v1/boi/${encodeURIComponent(id)}`, {
+      headers: { ...BOFIP_HEADERS, "X-API-Key": apiKey },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    cacheBoi.set(id, { data, expireAt: now + TTL });
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+async function getHistoriqueBoi(id) {
+  const now = Date.now();
+  const cached = cacheHistorique.get(id);
+  if (cached && cached.expireAt > now) return cached.data;
+
+  const apiKey = process.env.BOFIP_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const res = await fetch(`https://api.bofip.dev/v1/boi/${encodeURIComponent(id)}/historique`, {
+      headers: { ...BOFIP_HEADERS, "X-API-Key": apiKey },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    cacheHistorique.set(id, { data, expireAt: now + TTL });
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 // CORS pour toutes les routes
 app.use((req, res, next) => {
   res.set({
