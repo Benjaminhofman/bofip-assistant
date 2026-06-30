@@ -228,6 +228,55 @@ const SYSTEM_CLASSIFICATION = `Tu es un routeur pour un assistant de doctrine fi
 - requete_recherche : mots-clés doctrinaux pertinents dans TOUS les cas (en cadrage, déduis-les du sujet brut ; en synthèse, du sujet + précisions). Jamais null si un sujet fiscal est identifiable.
 - domaine : code domaine fiscal (IS, IR, TVA, BIC, BNC, RPPM, ENR, PAT) si clairement identifiable, sinon null.`;
 
+function postTraiterReponse(reponse, bois_synthese) {
+  // Index boi_id → item complet pour lookup rapide
+  const index = new Map();
+  for (const b of bois_synthese) {
+    if (b.boi_id) index.set(b.boi_id, b);
+  }
+
+  // Extrait toutes les citations [BOI-...] avec paragraphe optionnel [BOI-... § N]
+  const regexBoi = /\[BOI-[A-Z0-9][A-Z0-9-]*(?:\s+§\s*[\d.]+)?\]/g;
+  const rawMatches = [...reponse.matchAll(regexBoi)].map((m) => {
+    const inner = m[0].slice(1, -1); // retire [ ]
+    const paraMatch = inner.match(/^(BOI-[A-Z0-9-]+)\s+§\s*([\d.]+)$/);
+    if (paraMatch) return { boi_id: paraMatch[1], paragraphe: `§ ${paraMatch[2]}` };
+    return { boi_id: inner.trim(), paragraphe: null };
+  });
+
+  // Sépare cités-présents (dédupliqués) et cités-absents
+  const seenCites = new Map(); // boi_id → entrée boi_cites
+  const seenIgnores = new Set();
+  const boi_ignores = [];
+
+  for (const { boi_id, paragraphe } of rawMatches) {
+    if (index.has(boi_id)) {
+      if (!seenCites.has(boi_id)) {
+        const item = index.get(boi_id);
+        seenCites.set(boi_id, {
+          boi_id,
+          titre: item.titre || "",
+          url_bofip: item.url_bofip || null,
+          date_publication: item.date_publication || null,
+          note_version: item.note_version || null,
+          paragraphe,
+        });
+      }
+    } else if (!seenIgnores.has(boi_id)) {
+      seenIgnores.add(boi_id);
+      boi_ignores.push({ boi_id, paragraphe });
+    }
+  }
+
+  // Articles CGI : "article 39 du CGI", "article 238 bis du CGI", etc.
+  const regexCgi = /articles?\s+(\d[\w\s-]*?)\s+du\s+CGI/gi;
+  const articles_cgi = [
+    ...new Set([...reponse.matchAll(regexCgi)].map((m) => m[1].trim())),
+  ];
+
+  return { boi_cites: [...seenCites.values()], boi_ignores, articles_cgi };
+}
+
 function buildContextSynthese(bois, notesVersion) {
   const avecTexte = bois.filter((b) => b.texte_complet);
   const enExtrait = bois.filter((b) => !b.texte_complet && b.extrait);
@@ -528,11 +577,15 @@ app.post("/chat", async (req, res) => {
       const data = await openaiRes.json();
       if (!openaiRes.ok) throw new Error(data.error?.message || `OpenAI ${openaiRes.status}`);
 
+      const reponse = data.choices[0].message.content;
+      const { boi_cites, boi_ignores, articles_cgi } = postTraiterReponse(reponse, bois_synthese);
+
       return res.json({
-        reponse: data.choices[0].message.content,
+        reponse,
         phase: "synthese",
-        bois_synthese,
-        notes_version,
+        boi_cites,
+        boi_ignores,
+        articles_cgi,
       });
     }
 
