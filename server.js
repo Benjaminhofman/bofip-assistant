@@ -145,6 +145,29 @@ app.get("/search", async (req, res) => {
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 
+async function openaiCall(openaiKey, body) {
+  let res;
+  try {
+    res = await fetch(OPENAI_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openaiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(TIMEOUT_OPENAI),
+    });
+  } catch (err) {
+    const isTimeout = err.name === "TimeoutError" || err.name === "AbortError";
+    throw new Error(
+      isTimeout ? `Délai OpenAI dépassé (${TIMEOUT_OPENAI / 1000}s)` : `Réseau OpenAI : ${err.message}`
+    );
+  }
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || `OpenAI HTTP ${res.status}`);
+  return data;
+}
+
 app.post("/synthese", async (req, res) => {
   const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) {
@@ -169,29 +192,15 @@ ${context}
 Rédige une synthèse fiscale claire et structurée en français, en quelques phrases concises, qui répond directement à la question de l'utilisateur. Cite explicitement les références BOI (ex. : BOI-TVA-BASE-10-10) utilisées. Ne répète pas les extraits mot pour mot.`;
 
   try {
-    const openaiRes = await fetch(OPENAI_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${openaiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.3,
-        max_tokens: 600,
-      }),
+    const data = await openaiCall(openaiKey, {
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.3,
+      max_tokens: 600,
     });
-
-    const data = await openaiRes.json();
-    if (!openaiRes.ok) {
-      return res.status(openaiRes.status).json({ error: data.error?.message || "Erreur OpenAI" });
-    }
-
-    const synthese = data.choices?.[0]?.message?.content || "";
-    res.json({ synthese });
+    res.json({ synthese: data.choices?.[0]?.message?.content || "" });
   } catch (err) {
-    res.status(502).json({ error: "Échec de la requête OpenAI", detail: String(err) });
+    res.status(502).json({ error: String(err.message) });
   }
 });
 
@@ -373,25 +382,12 @@ async function searchBofip(q, domaine, limit) {
 }
 
 async function classifier(messages, openaiKey) {
-  const res = await fetch(OPENAI_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${openaiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: MODELE_CLASSIFICATION,
-      temperature: 0,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: SYSTEM_CLASSIFICATION },
-        ...messages,
-      ],
-    }),
-    signal: AbortSignal.timeout(TIMEOUT_OPENAI),
+  const data = await openaiCall(openaiKey, {
+    model: MODELE_CLASSIFICATION,
+    temperature: 0,
+    response_format: { type: "json_object" },
+    messages: [{ role: "system", content: SYSTEM_CLASSIFICATION }, ...messages],
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error?.message || `OpenAI ${res.status}`);
   return JSON.parse(data.choices[0].message.content);
 }
 
@@ -408,24 +404,21 @@ app.post("/chat", async (req, res) => {
 
   try {
     const classification = await classifier(messages, openaiKey);
-    console.log("Classification:", JSON.stringify(classification));
+    console.log(`[${classification.phase}] requete:"${classification.requete_recherche}" domaine:${classification.domaine || "null"}`);
 
     if (classification.phase === "cadrage") {
-      // Recherche BOFiP avec les mots-clés déduits
       const rawItems = await searchBofip(
         classification.requete_recherche,
         classification.domaine || filtre_domaine || null,
         MAX_BOI_CADRAGE + 5
       );
 
-      // Tri par date_publication décroissante
       const sorted = rawItems.slice().sort((a, b) => {
         const da = a.date_publication ? new Date(a.date_publication) : new Date(0);
         const db = b.date_publication ? new Date(b.date_publication) : new Date(0);
         return db - da;
       });
 
-      // Garde MAX_BOI_CADRAGE premiers, extraits seulement
       const boi_pistes = sorted.slice(0, MAX_BOI_CADRAGE).map((item) => ({
         boi_id: item.boi_id,
         titre: item.titre,
@@ -434,7 +427,8 @@ app.post("/chat", async (req, res) => {
         date_publication: item.date_publication,
       }));
 
-      // Contexte injecté avant la question de l'utilisateur
+      console.log(`[cadrage] ${boi_pistes.length}/${MAX_BOI_CADRAGE} BOI trouvés${!boi_pistes.length ? " — questions génériques" : ""}`);
+
       const contextCadrage = boi_pistes.length
         ? boi_pistes
             .map((item, i) => `[${i + 1}] ${item.boi_id} — ${item.titre}\n${item.extrait || ""}`)
@@ -453,22 +447,11 @@ app.post("/chat", async (req, res) => {
         },
       ];
 
-      const openaiRes = await fetch(OPENAI_URL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${openaiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: MODELE_SYNTHESE,
-          temperature: 0,
-          messages: augmentedMessages,
-        }),
-        signal: AbortSignal.timeout(TIMEOUT_OPENAI),
+      const data = await openaiCall(openaiKey, {
+        model: MODELE_SYNTHESE,
+        temperature: 0,
+        messages: augmentedMessages,
       });
-
-      const data = await openaiRes.json();
-      if (!openaiRes.ok) throw new Error(data.error?.message || `OpenAI ${openaiRes.status}`);
 
       return res.json({
         reponse: data.choices[0].message.content,
@@ -542,13 +525,24 @@ app.post("/chat", async (req, res) => {
         })
       );
 
-      // Rassemble les notes de version des BOI avec texte complet pour le prompt
+      console.log(`[synthese] ${selection.length} BOI sélectionnés (recherche: ${rawItems.length})`);
+
+      // Indisponibilité documentaire : pas de contexte, on ne fait pas l'appel OpenAI
+      if (!selection.length) {
+        return res.json({
+          reponse: "La recherche documentaire est temporairement indisponible. Merci de reformuler votre question ou de réessayer dans quelques instants.",
+          phase: "synthese",
+          boi_cites: [],
+          boi_ignores: [],
+          articles_cgi: [],
+        });
+      }
+
       const notes_version = bois_synthese
         .filter((b) => b.note_version)
         .map((b) => b.note_version)
         .join("\n");
 
-      // Appel OpenAI synthèse
       const contextSynthese = buildContextSynthese(bois_synthese, notes_version);
       const lastMsg = messages[messages.length - 1];
       const augmentedMessages = [
@@ -560,25 +554,16 @@ app.post("/chat", async (req, res) => {
         },
       ];
 
-      const openaiRes = await fetch(OPENAI_URL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${openaiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: MODELE_SYNTHESE,
-          temperature: 0,
-          messages: augmentedMessages,
-        }),
-        signal: AbortSignal.timeout(TIMEOUT_OPENAI),
+      const data = await openaiCall(openaiKey, {
+        model: MODELE_SYNTHESE,
+        temperature: 0,
+        messages: augmentedMessages,
       });
-
-      const data = await openaiRes.json();
-      if (!openaiRes.ok) throw new Error(data.error?.message || `OpenAI ${openaiRes.status}`);
 
       const reponse = data.choices[0].message.content;
       const { boi_cites, boi_ignores, articles_cgi } = postTraiterReponse(reponse, bois_synthese);
+
+      console.log(`[synthese] ${boi_cites.length} BOI cités | ${boi_ignores.length} ignorés`);
 
       return res.json({
         reponse,
@@ -591,8 +576,84 @@ app.post("/chat", async (req, res) => {
 
     res.json({ classification });
   } catch (err) {
-    res.status(502).json({ error: "Erreur classification", detail: String(err) });
+    res.status(502).json({ error: String(err.message) });
   }
+});
+
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+app.post("/export", (req, res) => {
+  const { messages = [], boi_cites_cumules = [] } = req.body;
+
+  const now = new Date();
+  const dateLocale = now.toLocaleDateString("fr-FR", {
+    day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Paris",
+  });
+  const heureLocale = now.toLocaleTimeString("fr-FR", {
+    hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris",
+  });
+  const horodatage = `${dateLocale} à ${heureLocale}`;
+
+  const conversation = messages.map((m) => {
+    const role = m.role === "user" ? "Vous" : "Assistant";
+    const cls = m.role === "user" ? "user" : "assistant";
+    return `<div class="message ${cls}"><span class="role">${role}</span><div class="content">${escapeHtml(m.content).replace(/\n/g, "<br>")}</div></div>`;
+  }).join("\n");
+
+  const sources = boi_cites_cumules.length
+    ? boi_cites_cumules.map((b) => {
+        const href = escapeHtml(b.url_bofip || "#");
+        const id = escapeHtml(b.boi_id || "");
+        const titre = escapeHtml(b.titre || "");
+        const date = b.date_publication ? ` — ${escapeHtml(b.date_publication)}` : "";
+        const para = b.paragraphe ? ` <span class="para">${escapeHtml(b.paragraphe)}</span>` : "";
+        const note = b.note_version ? `<br><span class="note-version">${escapeHtml(b.note_version)}</span>` : "";
+        return `<li><a href="${href}" target="_blank" rel="noopener noreferrer">${id}</a>${para} — ${titre}${date}${note}</li>`;
+      }).join("\n")
+    : "<li><em>Aucune source consolidée.</em></li>";
+
+  const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Consultation BOFiP — ${escapeHtml(dateLocale)}</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.6; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  h2 { font-size: 1.1rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; margin-top: 36px; }
+  .mention { color: #6b7280; font-size: 0.85rem; margin: 0 0 32px; }
+  .message { margin-bottom: 20px; }
+  .role { font-weight: 700; font-size: 0.8rem; text-transform: uppercase; letter-spacing: .05em; color: #6b7280; display: block; margin-bottom: 4px; }
+  .message.user .content { background: #f3f4f6; border-radius: 8px; padding: 12px 16px; }
+  .message.assistant .content { border-left: 3px solid #2563eb; padding-left: 14px; }
+  ul.sources { padding-left: 18px; }
+  ul.sources li { margin-bottom: 10px; font-size: 0.9rem; }
+  .para { font-family: monospace; color: #2563eb; }
+  .note-version { color: #6b7280; font-size: 0.8rem; }
+  footer { margin-top: 48px; border-top: 1px solid #e5e7eb; padding-top: 12px; color: #6b7280; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+<h1>BOFiP Assistant — Consultation du ${escapeHtml(horodatage)}</h1>
+<p class="mention">Doctrine consultée le ${escapeHtml(dateLocale)} — BOFiP, Etalab 2.0</p>
+
+<h2>Fil de la consultation</h2>
+${conversation || "<p><em>Aucun message.</em></p>"}
+
+<h2>Sources consolidées</h2>
+<ul class="sources">
+${sources}
+</ul>
+
+<footer>Doctrine consultée le ${escapeHtml(dateLocale)} — BOFiP, Etalab 2.0</footer>
+</body>
+</html>`;
+
+  res.type("text/html; charset=utf-8").send(html);
 });
 
 app.listen(PORT, () => {
