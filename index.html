@@ -369,6 +369,124 @@
     }
     #send-btn:hover   { background: var(--accent-hover); }
     #send-btn:disabled { opacity: 0.45; cursor: default; }
+
+    /* ── Bloc de résultats ── */
+    .msg.has-results { max-width: 96%; }
+
+    .results-block {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      width: 100%;
+    }
+
+    .results-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      padding-left: 1px;
+      margin-bottom: 1px;
+    }
+
+    /* ── Carte BOI ── */
+    .boi-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      transition: border-color 0.15s;
+    }
+    .boi-card:hover { border-color: #aac7b4; }
+    .boi-card.consulted {
+      border-color: var(--accent);
+      border-left: 3px solid var(--accent);
+    }
+
+    .card-header {
+      padding: 10px 14px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.12s;
+    }
+    .card-header:hover { background: #f4f8f5; }
+
+    .card-meta {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 5px;
+    }
+
+    .card-boi-id {
+      font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+      font-weight: 700;
+      color: var(--accent);
+      font-size: 0.8rem;
+    }
+
+    .card-domaine-badge {
+      font-size: 0.69rem;
+      font-weight: 600;
+      padding: 1px 7px;
+      border-radius: 999px;
+      background: var(--accent-light);
+      color: var(--accent);
+    }
+
+    .card-date {
+      font-size: 0.73rem;
+      color: #999;
+      margin-left: auto;
+    }
+
+    .card-titre {
+      font-size: 0.87rem;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.35;
+      margin-bottom: 3px;
+    }
+
+    .card-extrait {
+      font-size: 0.8rem;
+      color: var(--muted);
+      line-height: 1.45;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* ── Panneau de synthèse intégré à la carte ── */
+    .card-synthesis {
+      display: none;
+      padding: 13px 14px 14px;
+      border-top: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .boi-card.open .card-synthesis { display: block; }
+
+    .synthesis-loading {
+      font-size: 0.84rem;
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .synthesis-text {
+      font-size: 0.87rem;
+      line-height: 1.62;
+      color: var(--text);
+      margin-bottom: 10px;
+    }
+
+    .synthesis-error {
+      font-size: 0.84rem;
+      color: #b04a4a;
+    }
   </style>
 </head>
 <body>
@@ -392,8 +510,8 @@
     <div class="conversation" id="conversation">
       <div class="empty-state" id="empty-state">
         <strong>Posez votre question fiscale</strong>
-        L'assistant consulte la doctrine BOFiP en temps réel et vous répond<br>
-        avec une synthèse sourcée directement.
+        L'assistant cherche dans la doctrine BOFiP et liste les références.<br>
+        Cliquez sur une référence pour en obtenir la synthèse.
       </div>
     </div>
 
@@ -414,9 +532,9 @@
     const DOMAINES = ["IS", "IR", "TVA", "BIC", "BNC", "RPPM", "ENR", "PAT"];
 
     // ── État ──────────────────────────────────────────────────────────────
-    let messages          = [];
-    let panier_boi        = new Set();
-    let boi_cites_cumules = new Map();
+    let messages          = []; // messages utilisateur uniquement (contexte de recherche)
+    let synthesesCache    = new Map(); // boi_id → données de synthèse (évite re-appel API)
+    let boi_cites_cumules = new Map(); // pour export
     let filtre_domaine    = null;
     let isLoading         = false;
 
@@ -464,7 +582,7 @@
     // ── Nouvelle conversation ─────────────────────────────────────────────
     newConvBtn.addEventListener("click", () => {
       messages          = [];
-      panier_boi        = new Set();
+      synthesesCache    = new Map();
       boi_cites_cumules = new Map();
       convEl.innerHTML  = "";
       convEl.appendChild(emptyStateEl);
@@ -575,105 +693,6 @@
       scrollToBottom();
     }
 
-    // ── Bulle assistant ───────────────────────────────────────────────────
-    function appendAssistantBubble(content, meta = {}) {
-      emptyStateEl.style.display = "none";
-      const { boi_cites = [], boi_ignores = [], articles_cgi = [] } = meta;
-
-      const citesMap   = new Map(boi_cites.map((b) => [b.boi_id, b]));
-      const ignoresSet = new Set(boi_ignores.map((b) => b.boi_id));
-      const hasMeta    = boi_cites.length > 0 || boi_ignores.length > 0;
-
-      const msgDiv = document.createElement("div");
-      msgDiv.className = "msg assistant";
-
-      const label = document.createElement("div");
-      label.className = "msg-label";
-      label.textContent = "Assistant";
-
-      const bubble = document.createElement("div");
-      bubble.className = "bubble";
-      bubble.innerHTML = hasMeta
-        ? renderTextWithBoi(content, citesMap, ignoresSet)
-        : escapeHtml(content).replace(/\n/g, "<br>");
-
-      msgDiv.appendChild(label);
-      msgDiv.appendChild(bubble);
-
-      // Encart Sources citées
-      if (boi_cites.length) {
-        const panel = document.createElement("div");
-        panel.className = "sources-panel";
-        const lbl = document.createElement("div");
-        lbl.className = "encart-label";
-        lbl.textContent = "Sources citées";
-        panel.appendChild(lbl);
-
-        boi_cites.forEach((b) => {
-          // Item entier = lien cliquable vers url_bofip
-          const item = document.createElement("a");
-          item.className = "source-item";
-          item.href   = b.url_bofip || "#";
-          item.target = "_blank";
-          item.rel    = "noopener noreferrer";
-
-          const idSpan = document.createElement("span");
-          idSpan.className = "source-boi-id";
-          idSpan.textContent = b.boi_id || "";
-          item.appendChild(idSpan);
-
-          if (b.paragraphe) {
-            const p = document.createElement("span");
-            p.className = "source-titre";
-            p.textContent = " " + b.paragraphe;
-            item.appendChild(p);
-          }
-          if (b.titre) {
-            const t = document.createElement("span");
-            t.className = "source-titre";
-            t.textContent = " — " + b.titre;
-            item.appendChild(t);
-          }
-          if (b.date_publication) {
-            const d = document.createElement("span");
-            d.className = "source-date";
-            d.textContent = " (" + b.date_publication + ")";
-            item.appendChild(d);
-          }
-          if (b.note_version) {
-            const badge = document.createElement("span");
-            badge.innerHTML = " " + badgeStatut(b.note_version);
-            item.appendChild(badge);
-          }
-          panel.appendChild(item);
-        });
-        msgDiv.appendChild(panel);
-      }
-
-      // Encart Base légale CGI
-      if (articles_cgi.length) {
-        const cgiPanel = document.createElement("div");
-        cgiPanel.className = "cgi-panel";
-        const cgiLbl = document.createElement("div");
-        cgiLbl.className = "encart-label";
-        cgiLbl.textContent = "Base légale référencée (CGI)";
-        cgiPanel.appendChild(cgiLbl);
-        const list = document.createElement("div");
-        list.className = "cgi-list";
-        articles_cgi.forEach((art) => {
-          const span = document.createElement("span");
-          span.className = "cgi-item";
-          span.textContent = "Art. " + art + " CGI";
-          list.appendChild(span);
-        });
-        cgiPanel.appendChild(list);
-        msgDiv.appendChild(cgiPanel);
-      }
-
-      convEl.appendChild(msgDiv);
-      scrollToBottom();
-    }
-
     // ── Message d'erreur discret ──────────────────────────────────────────
     function appendError(message) {
       emptyStateEl.style.display = "none";
@@ -691,7 +710,7 @@
       scrollToBottom();
     }
 
-    // ── Indicateur de chargement ──────────────────────────────────────────
+    // ── Indicateur de chargement global ───────────────────────────────────
     let loadingEl = null;
 
     function showLoading() {
@@ -716,6 +735,209 @@
       if (loadingEl) { loadingEl.remove(); loadingEl = null; }
     }
 
+    // ── Rendu de la synthèse dans le panneau d'une carte ──────────────────
+    function renderSynthesisInPanel(panel, data, item) {
+      panel.innerHTML = "";
+
+      // Badge version
+      if (data.note_version) {
+        const badgeWrap = document.createElement("div");
+        badgeWrap.style.marginBottom = "8px";
+        let badgeHtml = badgeStatut(data.note_version);
+        if (data.date_publication) {
+          badgeHtml += ` <span class="source-date">${escapeHtml(data.date_publication)}</span>`;
+        }
+        badgeWrap.innerHTML = badgeHtml;
+        panel.appendChild(badgeWrap);
+      }
+
+      // Texte de synthèse avec liens BOI
+      const boiId    = data.boi_id || item.boi_id;
+      const citesMap = new Map();
+      citesMap.set(boiId, { url_bofip: data.url_bofip || item.url_bofip || null });
+      const ignoresSet = new Set((data.boi_ignores || []).map((b) => b.boi_id));
+
+      const textDiv = document.createElement("div");
+      textDiv.className = "synthesis-text";
+      textDiv.innerHTML = renderTextWithBoi(data.synthese, citesMap, ignoresSet);
+      panel.appendChild(textDiv);
+
+      // Encart base légale CGI
+      if (data.articles_cgi && data.articles_cgi.length) {
+        const cgiPanel = document.createElement("div");
+        cgiPanel.className = "cgi-panel";
+        const cgiLbl = document.createElement("div");
+        cgiLbl.className = "encart-label";
+        cgiLbl.textContent = "Base légale référencée (CGI)";
+        cgiPanel.appendChild(cgiLbl);
+        const list = document.createElement("div");
+        list.className = "cgi-list";
+        data.articles_cgi.forEach((art) => {
+          const span = document.createElement("span");
+          span.className = "cgi-item";
+          span.textContent = "Art. " + art + " CGI";
+          list.appendChild(span);
+        });
+        cgiPanel.appendChild(list);
+        panel.appendChild(cgiPanel);
+      }
+    }
+
+    // ── Clic sur une carte BOI ────────────────────────────────────────────
+    async function handleCardClick(card, item, question, synthPanel) {
+      const boiId = item.boi_id;
+
+      // Déjà synthétisé : bascule ouverture/fermeture sans rappel API
+      if (synthesesCache.has(boiId)) {
+        card.classList.toggle("open");
+        if (card.classList.contains("open")) scrollToBottom();
+        return;
+      }
+
+      // Double-clic pendant le chargement : ignoré
+      if (card.dataset.loading === "true") return;
+
+      // Lance la synthèse
+      card.classList.add("open");
+      card.dataset.loading = "true";
+      synthPanel.innerHTML = '<div class="synthesis-loading loading-dots">Synthèse en cours…</div>';
+      scrollToBottom();
+
+      try {
+        const resp = await fetch("/synthese-boi", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ boi_id: boiId, question_contexte: question }),
+        });
+
+        const data = await resp.json();
+        if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);
+
+        synthesesCache.set(boiId, data);
+        card.classList.add("consulted");
+
+        // Accumule pour l'export
+        if (!boi_cites_cumules.has(boiId)) {
+          boi_cites_cumules.set(boiId, {
+            boi_id:           boiId,
+            titre:            data.titre || item.titre || "",
+            url_bofip:        data.url_bofip || item.url_bofip || null,
+            date_publication: data.date_publication || item.date_publication || null,
+            note_version:     data.note_version || null,
+            paragraphe:       null,
+          });
+        }
+        exportBtn.disabled = false;
+
+        renderSynthesisInPanel(synthPanel, data, item);
+      } catch (err) {
+        synthPanel.innerHTML = `<div class="synthesis-error">Erreur : ${escapeHtml(err.message)}</div>`;
+        card.classList.remove("open");
+      } finally {
+        delete card.dataset.loading;
+      }
+
+      scrollToBottom();
+    }
+
+    // ── Création d'une carte BOI ──────────────────────────────────────────
+    function createBoiCard(item, question) {
+      const card = document.createElement("div");
+      card.className = "boi-card";
+
+      // En-tête cliquable
+      const header = document.createElement("div");
+      header.className = "card-header";
+
+      const meta = document.createElement("div");
+      meta.className = "card-meta";
+
+      const idSpan = document.createElement("span");
+      idSpan.className = "card-boi-id";
+      idSpan.textContent = item.boi_id;
+      meta.appendChild(idSpan);
+
+      if (item.domaine) {
+        const domBadge = document.createElement("span");
+        domBadge.className = "card-domaine-badge";
+        domBadge.textContent = item.domaine;
+        meta.appendChild(domBadge);
+      }
+
+      if (item.date_publication) {
+        const dateSpan = document.createElement("span");
+        dateSpan.className = "card-date";
+        dateSpan.textContent = item.date_publication;
+        meta.appendChild(dateSpan);
+      }
+
+      header.appendChild(meta);
+
+      if (item.titre) {
+        const titre = document.createElement("div");
+        titre.className = "card-titre";
+        titre.textContent = item.titre;
+        header.appendChild(titre);
+      }
+
+      if (item.extrait) {
+        const extrait = document.createElement("div");
+        extrait.className = "card-extrait";
+        extrait.textContent = item.extrait;
+        header.appendChild(extrait);
+      }
+
+      card.appendChild(header);
+
+      // Panneau de synthèse (masqué par défaut)
+      const synthPanel = document.createElement("div");
+      synthPanel.className = "card-synthesis";
+      card.appendChild(synthPanel);
+
+      header.addEventListener("click", () => {
+        handleCardClick(card, item, question, synthPanel);
+      });
+
+      return card;
+    }
+
+    // ── Affichage du bloc de résultats ────────────────────────────────────
+    function appendResultsBlock(resultats, question) {
+      emptyStateEl.style.display = "none";
+
+      const wrapper = document.createElement("div");
+      wrapper.className = "msg assistant has-results";
+
+      const label = document.createElement("div");
+      label.className = "msg-label";
+      label.textContent = "Résultats";
+      wrapper.appendChild(label);
+
+      if (!resultats || !resultats.length) {
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        bubble.textContent = "Aucun résultat trouvé dans la doctrine BOFiP pour cette recherche. Précisez votre contexte (régime applicable, opération visée, situation).";
+        wrapper.appendChild(bubble);
+      } else {
+        const block = document.createElement("div");
+        block.className = "results-block";
+
+        const lbl = document.createElement("div");
+        lbl.className = "results-label";
+        lbl.textContent = `${resultats.length} référence${resultats.length > 1 ? "s" : ""} — cliquez pour synthétiser`;
+        block.appendChild(lbl);
+
+        resultats.forEach((item) => {
+          block.appendChild(createBoiCard(item, question));
+        });
+
+        wrapper.appendChild(block);
+      }
+
+      convEl.appendChild(wrapper);
+      scrollToBottom();
+    }
+
     // ── Envoi ─────────────────────────────────────────────────────────────
     async function sendMessage() {
       const content = inputEl.value.trim();
@@ -735,11 +957,7 @@
         const resp = await fetch("/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messages,
-            paniers_boi: [...panier_boi],
-            filtre_domaine,
-          }),
+          body: JSON.stringify({ messages, filtre_domaine }),
         });
 
         const data = await resp.json();
@@ -747,27 +965,7 @@
 
         if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);
 
-        const reponse = data.reponse || "";
-
-        // Mise à jour du panier et des sources cumulées
-        if (Array.isArray(data.boi_cites)) {
-          data.boi_cites.forEach((b) => {
-            if (b.boi_id) {
-              panier_boi.add(b.boi_id);
-              if (!boi_cites_cumules.has(b.boi_id)) boi_cites_cumules.set(b.boi_id, b);
-            }
-          });
-          if (data.boi_cites.length) exportBtn.disabled = false;
-        }
-
-        messages.push({ role: "assistant", content: reponse });
-
-        appendAssistantBubble(reponse, {
-          boi_cites:    data.boi_cites    || [],
-          boi_ignores:  data.boi_ignores  || [],
-          articles_cgi: data.articles_cgi || [],
-        });
-
+        appendResultsBlock(data.resultats, content);
       } catch (err) {
         hideLoading();
         messages.pop();
