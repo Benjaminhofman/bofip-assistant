@@ -265,7 +265,7 @@
       if (activeDomaine) params.set("domaine", activeDomaine);
 
       try {
-        const res = await fetch(`/.netlify/functions/bofip?${params}`);
+        const res = await fetch(`/search?${params}`);
         if (!res.ok) {
           throw new Error(`Erreur ${res.status}`);
         }

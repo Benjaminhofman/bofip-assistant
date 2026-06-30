@@ -2,8 +2,13 @@
   "name": "bofip-assistant",
   "version": "1.0.0",
   "private": true,
-  "description": "Assistant BOFiP avec proxy Netlify Functions vers l'API BOFiP",
+  "description": "Assistant BOFiP avec serveur Express proxy vers l'API BOFiP",
+  "scripts": {
+    "start": "node server.js"
+  },
   "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^4.22.2",
     "node-fetch": "^2.7.0"
   }
 }
