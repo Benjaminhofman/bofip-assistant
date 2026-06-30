@@ -47,7 +47,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
+      gap: 12px;
       padding: 13px 20px;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
@@ -58,14 +58,15 @@
       font-weight: 700;
       letter-spacing: -0.01em;
     }
-
     .header-title p {
       font-size: 0.78rem;
       color: var(--muted);
       margin-top: 1px;
     }
 
-    #new-conv-btn {
+    .header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+    .btn-ghost {
       padding: 6px 14px;
       font-size: 0.82rem;
       font-weight: 500;
@@ -76,9 +77,9 @@
       cursor: pointer;
       white-space: nowrap;
       transition: all 0.15s;
-      flex-shrink: 0;
     }
-    #new-conv-btn:hover { background: var(--border); color: var(--text); }
+    .btn-ghost:hover { background: var(--border); color: var(--text); }
+    .btn-ghost:disabled { opacity: 0.4; cursor: default; }
 
     /* ── Domain chips ── */
     .domain-bar {
@@ -90,14 +91,12 @@
       flex-shrink: 0;
       align-items: center;
     }
-
     .domain-bar .label {
       font-size: 0.75rem;
       color: var(--muted);
       font-weight: 500;
       margin-right: 2px;
     }
-
     .chip {
       padding: 3px 11px;
       font-size: 0.78rem;
@@ -146,9 +145,9 @@
     .msg {
       display: flex;
       flex-direction: column;
-      max-width: 80%;
+      max-width: 82%;
     }
-    .msg.user { align-self: flex-end; align-items: flex-end; }
+    .msg.user    { align-self: flex-end;   align-items: flex-end; }
     .msg.assistant { align-self: flex-start; align-items: flex-start; }
 
     .msg-label {
@@ -166,77 +165,134 @@
       font-size: 0.92rem;
       word-break: break-word;
     }
-
     .msg.user .bubble {
       background: var(--accent);
       color: #fff;
       border-bottom-right-radius: 3px;
+      white-space: pre-wrap;
     }
-
     .msg.assistant .bubble {
       background: var(--surface);
       border: 1px solid var(--border);
       box-shadow: var(--shadow);
       border-bottom-left-radius: 3px;
-      white-space: pre-wrap;
     }
-
     .msg.assistant.loading .bubble {
       color: var(--muted);
       font-style: italic;
     }
-
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.35; }
-    }
+    @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:.35; } }
     .loading-dots { animation: blink 1.2s ease-in-out infinite; }
 
-    /* ── Sources ── */
+    /* ── Liens BOI dans le texte ── */
+    .boi-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+      font-size: .88em;
+      font-weight: 600;
+      border-bottom: 1px dotted var(--accent);
+    }
+    .boi-link:hover { text-decoration: underline; }
+
+    .boi-ignore {
+      font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+      font-size: .88em;
+      color: #9ca3af;
+    }
+
+    /* ── Encart Sources (synthèse) ── */
     .sources-panel {
       margin-top: 8px;
-      padding: 9px 13px;
+      padding: 10px 14px;
       background: #f8faff;
       border: 1px solid #dbeafe;
       border-radius: 8px;
-      font-size: 0.8rem;
+      font-size: 0.81rem;
       width: 100%;
     }
-
-    .sources-panel .sources-label {
+    .encart-label {
       font-size: 0.7rem;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       color: var(--accent);
-      margin-bottom: 6px;
+      margin-bottom: 7px;
     }
-
     .source-item {
-      margin-bottom: 4px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 5px;
+      margin-bottom: 6px;
       line-height: 1.4;
     }
-
+    .source-item:last-child { margin-bottom: 0; }
     .source-item a {
       color: var(--accent);
       text-decoration: none;
       font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
       font-size: 0.78rem;
-      font-weight: 600;
+      font-weight: 700;
     }
     .source-item a:hover { text-decoration: underline; }
+    .source-titre { color: var(--muted); }
+    .source-date  { color: #9ca3af; font-size: 0.75rem; }
 
-    .source-item .para {
-      color: var(--accent);
-      font-family: ui-monospace, monospace;
-      font-size: 0.75rem;
+    /* Badges statut */
+    .badge {
+      display: inline-block;
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
+    .badge-ok     { background: #dcfce7; color: #166534; }
+    .badge-warn   { background: #fef9c3; color: #854d0e; }
+    .badge-orange { background: #ffedd5; color: #9a3412; }
+    .badge-red    { background: #fee2e2; color: #991b1b; }
+    .badge-gray   { background: #f3f4f6; color: #6b7280; }
 
-    .source-item .source-titre {
+    /* ── Encart Base légale ── */
+    .cgi-panel {
+      margin-top: 8px;
+      padding: 9px 14px;
+      background: #f9fafb;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.81rem;
+      width: 100%;
       color: var(--muted);
     }
+    .cgi-panel .encart-label { color: var(--muted); }
+    .cgi-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .cgi-item {
+      font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+      font-size: 0.78rem;
+      background: var(--chip-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 7px;
+      color: var(--text);
+    }
 
-    /* ── Input area ── */
+    /* ── Message d'erreur ── */
+    .msg.error .bubble {
+      background: #fff7f7;
+      border-color: #fecaca;
+      color: #7f1d1d;
+      font-size: 0.85rem;
+    }
+    .msg.error .msg-label { color: #f87171; }
+
+    /* ── Zone de saisie ── */
     .input-area {
       display: flex;
       gap: 8px;
@@ -246,7 +302,6 @@
       align-items: flex-end;
       background: var(--surface);
     }
-
     #input {
       flex: 1;
       padding: 10px 14px;
@@ -266,7 +321,6 @@
     #input:focus { border-color: var(--accent); }
     #input:disabled { background: var(--bg); cursor: not-allowed; }
     #input::placeholder { color: #9ca3af; }
-
     #send-btn {
       padding: 0 18px;
       font-size: 0.9rem;
@@ -283,13 +337,6 @@
     }
     #send-btn:hover { background: var(--accent-hover); }
     #send-btn:disabled { opacity: 0.5; cursor: default; }
-
-    .input-hint {
-      font-size: 0.72rem;
-      color: #9ca3af;
-      margin-top: 5px;
-      padding: 0 2px;
-    }
   </style>
 </head>
 <body>
@@ -300,7 +347,10 @@
         <h1>BOFiP Assistant</h1>
         <p>Doctrine fiscale française — usage professionnel</p>
       </div>
-      <button id="new-conv-btn" type="button">Nouvelle conversation</button>
+      <div class="header-actions">
+        <button id="export-btn" class="btn-ghost" type="button" disabled>Exporter</button>
+        <button id="new-conv-btn" class="btn-ghost" type="button">Nouvelle conversation</button>
+      </div>
     </header>
 
     <div class="domain-bar" id="domain-bar">
@@ -315,17 +365,15 @@
       </div>
     </div>
 
-    <div class="input-wrapper" style="flex-shrink:0">
-      <div class="input-area">
-        <textarea
-          id="input"
-          placeholder="Votre question fiscale… (Entrée pour envoyer, Maj+Entrée pour sauter une ligne)"
-          rows="1"
-          autocomplete="off"
-          spellcheck="true"
-        ></textarea>
-        <button id="send-btn" type="button">Envoyer</button>
-      </div>
+    <div class="input-area">
+      <textarea
+        id="input"
+        placeholder="Votre question fiscale… (Entrée pour envoyer, Maj+Entrée pour sauter une ligne)"
+        rows="1"
+        autocomplete="off"
+        spellcheck="true"
+      ></textarea>
+      <button id="send-btn" type="button">Envoyer</button>
     </div>
 
   </div>
@@ -333,21 +381,23 @@
   <script>
     const DOMAINES = ["IS", "IR", "TVA", "BIC", "BNC", "RPPM", "ENR", "PAT"];
 
-    // ── État ──
-    let messages = [];
-    let panier_boi = new Set();   // boi_id accumulés (pistes cadrage + cités synthèse)
-    let filtre_domaine = null;
-    let isLoading = false;
+    // ── État ──────────────────────────────────────────────────────────────
+    let messages          = [];
+    let panier_boi        = new Set();      // boi_id accumulés (pistes + cités)
+    let boi_cites_cumules = new Map();      // boi_id → entrée complète (pour export)
+    let filtre_domaine    = null;
+    let isLoading         = false;
 
-    // ── Refs DOM ──
+    // ── Refs DOM ──────────────────────────────────────────────────────────
     const domainBarEl  = document.getElementById("domain-bar");
     const convEl       = document.getElementById("conversation");
     const emptyStateEl = document.getElementById("empty-state");
     const inputEl      = document.getElementById("input");
     const sendBtn      = document.getElementById("send-btn");
     const newConvBtn   = document.getElementById("new-conv-btn");
+    const exportBtn    = document.getElementById("export-btn");
 
-    // ── Puces de domaine ──
+    // ── Puces de domaine ──────────────────────────────────────────────────
     DOMAINES.forEach((dom) => {
       const chip = document.createElement("button");
       chip.type = "button";
@@ -356,105 +406,228 @@
       chip.setAttribute("aria-pressed", "false");
       chip.addEventListener("click", () => {
         const wasActive = filtre_domaine === dom;
-        domainBarEl.querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", "false"));
+        domainBarEl.querySelectorAll(".chip")
+          .forEach((c) => c.setAttribute("aria-pressed", "false"));
         filtre_domaine = wasActive ? null : dom;
         if (!wasActive) chip.setAttribute("aria-pressed", "true");
       });
       domainBarEl.appendChild(chip);
     });
 
-    // ── Textarea auto-resize ──
+    // ── Textarea auto-resize ──────────────────────────────────────────────
     inputEl.addEventListener("input", () => {
       inputEl.style.height = "auto";
       inputEl.style.height = Math.min(inputEl.scrollHeight, 180) + "px";
     });
 
-    // ── Entrée pour envoyer ──
+    // ── Entrée = envoyer, Maj+Entrée = saut de ligne ──────────────────────
     inputEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         if (!isLoading) sendMessage();
       }
     });
-
     sendBtn.addEventListener("click", () => { if (!isLoading) sendMessage(); });
 
-    // ── Nouvelle conversation ──
+    // ── Nouvelle conversation ─────────────────────────────────────────────
     newConvBtn.addEventListener("click", () => {
-      messages = [];
-      panier_boi = new Set();
-      convEl.innerHTML = "";
+      messages          = [];
+      panier_boi        = new Set();
+      boi_cites_cumules = new Map();
+      convEl.innerHTML  = "";
       convEl.appendChild(emptyStateEl);
       emptyStateEl.style.display = "";
-      inputEl.value = "";
+      inputEl.value      = "";
       inputEl.style.height = "auto";
+      exportBtn.disabled = true;
       inputEl.focus();
     });
 
-    // ── Utilitaires ──
+    // ── Export ────────────────────────────────────────────────────────────
+    exportBtn.addEventListener("click", async () => {
+      try {
+        const resp = await fetch("/export", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages,
+            boi_cites_cumules: [...boi_cites_cumules.values()],
+          }),
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const html = await resp.text();
+        const blob = new Blob([html], { type: "text/html; charset=utf-8" });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement("a");
+        const date = new Date().toISOString().slice(0, 10);
+        a.href     = url;
+        a.download = `bofip-consultation-${date}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        appendError(`Erreur lors de l'export : ${err.message}`);
+      }
+    });
+
+    // ── Utilitaires ───────────────────────────────────────────────────────
     function escapeHtml(s) {
       return String(s ?? "")
         .replace(/&/g, "&amp;").replace(/</g, "&lt;")
         .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     }
 
-    function scrollToBottom() {
-      convEl.scrollTop = convEl.scrollHeight;
+    function scrollToBottom() { convEl.scrollTop = convEl.scrollHeight; }
+
+    // ── Rendu du texte avec liens BOI ─────────────────────────────────────
+    // citesMap  : Map boi_id → { url_bofip, ... }
+    // ignoresSet: Set boi_id (cités hors contexte)
+    function renderTextWithBoi(text, citesMap, ignoresSet) {
+      const regex = /\[BOI-[A-Z0-9][A-Z0-9-]*(?:\s+§\s*[\d.]+)?\]/g;
+      let html = "";
+      let last = 0;
+      let m;
+
+      while ((m = regex.exec(text)) !== null) {
+        // Texte avant la citation
+        html += escapeHtml(text.slice(last, m.index)).replace(/\n/g, "<br>");
+
+        const full  = m[0];                       // "[BOI-TVA-BASE-10 § 50]"
+        const inner = full.slice(1, -1);           // "BOI-TVA-BASE-10 § 50"
+        const pm    = inner.match(/^(BOI-[A-Z0-9-]+)\s+§\s*([\d.]+)$/);
+        const boiId = pm ? pm[1] : inner.trim();
+        const para  = pm ? pm[2] : null;
+
+        if (citesMap && citesMap.has(boiId)) {
+          let href = citesMap.get(boiId).url_bofip || "#";
+          // Tente d'ajouter l'ancre de paragraphe si l'URL ne l'a pas déjà
+          if (para && href !== "#" && !href.includes("#")) href += "#" + para;
+          html += `<a class="boi-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(inner)}</a>`;
+        } else if (ignoresSet && ignoresSet.has(boiId)) {
+          html += `<span class="boi-ignore">${escapeHtml(inner)}</span>`;
+        } else {
+          html += escapeHtml(full);
+        }
+
+        last = m.index + full.length;
+      }
+
+      html += escapeHtml(text.slice(last)).replace(/\n/g, "<br>");
+      return html;
     }
 
-    // ── Affiche une bulle ──
-    function appendBubble(role, content, sources) {
+    // ── Badge statut de version ───────────────────────────────────────────
+    function badgeStatut(note_version) {
+      if (!note_version) return "";
+      const m    = note_version.match(/statut "([^"]+)"/);
+      const st   = m ? m[1].toLowerCase() : "";
+      const plus = note_version.includes("plus récente disponible");
+
+      if (st.includes("vigueur") && !plus)
+        return '<span class="badge badge-ok">En vigueur</span>';
+      if (st.includes("vigueur") && plus)
+        return '<span class="badge badge-warn">Mise à jour</span>';
+      if (st.includes("rapport"))
+        return '<span class="badge badge-orange">Rapporté</span>';
+      if (st.includes("abrog"))
+        return '<span class="badge badge-red">Abrogé</span>';
+      return st ? `<span class="badge badge-gray">${escapeHtml(st)}</span>` : "";
+    }
+
+    // ── Affiche une bulle utilisateur ─────────────────────────────────────
+    function appendUserBubble(content) {
       emptyStateEl.style.display = "none";
+      const msgDiv = document.createElement("div");
+      msgDiv.className = "msg user";
+      const label = document.createElement("div");
+      label.className = "msg-label";
+      label.textContent = "Vous";
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = content;      // pre-wrap CSS gère les sauts de ligne
+      msgDiv.appendChild(label);
+      msgDiv.appendChild(bubble);
+      convEl.appendChild(msgDiv);
+      scrollToBottom();
+    }
+
+    // ── Affiche une bulle assistant ───────────────────────────────────────
+    // meta : { boi_cites?, boi_ignores?, articles_cgi? }
+    function appendAssistantBubble(content, meta = {}) {
+      emptyStateEl.style.display = "none";
+      const { boi_cites = [], boi_ignores = [], articles_cgi = [] } = meta;
+
+      const citesMap   = new Map(boi_cites.map((b) => [b.boi_id, b]));
+      const ignoresSet = new Set(boi_ignores.map((b) => b.boi_id));
+      const hasMeta    = boi_cites.length > 0 || boi_ignores.length > 0;
 
       const msgDiv = document.createElement("div");
-      msgDiv.className = `msg ${role}`;
+      msgDiv.className = "msg assistant";
 
       const label = document.createElement("div");
       label.className = "msg-label";
-      label.textContent = role === "user" ? "Vous" : "Assistant";
+      label.textContent = "Assistant";
 
       const bubble = document.createElement("div");
       bubble.className = "bubble";
-      // Texte brut escapé, retours à la ligne conservés via white-space:pre-wrap
-      bubble.textContent = content;
+      // Rendu avec liens BOI si on a des métadonnées, sinon texte simple
+      if (hasMeta) {
+        bubble.innerHTML = renderTextWithBoi(content, citesMap, ignoresSet);
+      } else {
+        // Cadrage : pas de citations, juste newlines
+        bubble.innerHTML = escapeHtml(content).replace(/\n/g, "<br>");
+      }
 
       msgDiv.appendChild(label);
       msgDiv.appendChild(bubble);
 
-      // Sources (phase synthèse uniquement)
-      if (sources && sources.length) {
+      // Encart Sources
+      if (boi_cites.length) {
         const panel = document.createElement("div");
         panel.className = "sources-panel";
 
         const lbl = document.createElement("div");
-        lbl.className = "sources-label";
+        lbl.className = "encart-label";
         lbl.textContent = "Sources citées";
         panel.appendChild(lbl);
 
-        sources.forEach((b) => {
+        boi_cites.forEach((b) => {
           const item = document.createElement("div");
           item.className = "source-item";
 
           const a = document.createElement("a");
-          a.href = b.url_bofip || "#";
+          a.href   = b.url_bofip || "#";
           a.target = "_blank";
-          a.rel = "noopener noreferrer";
+          a.rel    = "noopener noreferrer";
           a.textContent = b.boi_id || "";
-
           item.appendChild(a);
 
           if (b.paragraphe) {
             const para = document.createElement("span");
-            para.className = "para";
+            para.className = "source-titre";
             para.textContent = " " + b.paragraphe;
             item.appendChild(para);
           }
 
           if (b.titre) {
-            const titre = document.createElement("span");
-            titre.className = "source-titre";
-            titre.textContent = " — " + b.titre;
-            item.appendChild(titre);
+            const t = document.createElement("span");
+            t.className = "source-titre";
+            t.textContent = " — " + b.titre;
+            item.appendChild(t);
+          }
+
+          if (b.date_publication) {
+            const d = document.createElement("span");
+            d.className = "source-date";
+            d.textContent = " (" + b.date_publication + ")";
+            item.appendChild(d);
+          }
+
+          if (b.note_version) {
+            const badge = document.createElement("span");
+            badge.innerHTML = " " + badgeStatut(b.note_version);
+            item.appendChild(badge);
           }
 
           panel.appendChild(item);
@@ -463,33 +636,66 @@
         msgDiv.appendChild(panel);
       }
 
+      // Encart Base légale
+      if (articles_cgi.length) {
+        const cgiPanel = document.createElement("div");
+        cgiPanel.className = "cgi-panel";
+
+        const cgiLbl = document.createElement("div");
+        cgiLbl.className = "encart-label";
+        cgiLbl.textContent = "Base légale référencée (CGI)";
+        cgiPanel.appendChild(cgiLbl);
+
+        const list = document.createElement("div");
+        list.className = "cgi-list";
+        articles_cgi.forEach((art) => {
+          const span = document.createElement("span");
+          span.className = "cgi-item";
+          span.textContent = "Art. " + art + " CGI";
+          list.appendChild(span);
+        });
+        cgiPanel.appendChild(list);
+        msgDiv.appendChild(cgiPanel);
+      }
+
       convEl.appendChild(msgDiv);
       scrollToBottom();
-      return msgDiv;
     }
 
-    // ── Indicateur de chargement ──
+    // ── Affiche un message d'erreur discret ───────────────────────────────
+    function appendError(message) {
+      emptyStateEl.style.display = "none";
+      const msgDiv = document.createElement("div");
+      msgDiv.className = "msg assistant error";
+      const label = document.createElement("div");
+      label.className = "msg-label";
+      label.textContent = "Erreur";
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = message;
+      msgDiv.appendChild(label);
+      msgDiv.appendChild(bubble);
+      convEl.appendChild(msgDiv);
+      scrollToBottom();
+    }
+
+    // ── Indicateur de chargement ──────────────────────────────────────────
     let loadingEl = null;
 
     function showLoading() {
       loadingEl = document.createElement("div");
       loadingEl.className = "msg assistant loading";
-
       const label = document.createElement("div");
       label.className = "msg-label";
       label.textContent = "Assistant";
-
       const bubble = document.createElement("div");
       bubble.className = "bubble";
-
       const dots = document.createElement("span");
       dots.className = "loading-dots";
       dots.textContent = "Recherche dans le BOFiP…";
-
       bubble.appendChild(dots);
       loadingEl.appendChild(label);
       loadingEl.appendChild(bubble);
-
       convEl.appendChild(loadingEl);
       scrollToBottom();
     }
@@ -498,20 +704,17 @@
       if (loadingEl) { loadingEl.remove(); loadingEl = null; }
     }
 
-    // ── Envoi ──
+    // ── Envoi ─────────────────────────────────────────────────────────────
     async function sendMessage() {
       const content = inputEl.value.trim();
       if (!content) return;
 
-      // Ajoute le message utilisateur à l'historique et l'affiche
       messages.push({ role: "user", content });
-      appendBubble("user", content);
+      appendUserBubble(content);
 
-      // Réinitialise la saisie
       inputEl.value = "";
       inputEl.style.height = "auto";
 
-      // État de chargement
       isLoading = true;
       sendBtn.disabled = true;
       inputEl.disabled = true;
@@ -531,9 +734,7 @@
         const data = await resp.json();
         hideLoading();
 
-        if (!resp.ok || data.error) {
-          throw new Error(data.error || `HTTP ${resp.status}`);
-        }
+        if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);
 
         const reponse = data.reponse || "";
 
@@ -542,21 +743,33 @@
           data.boi_pistes.forEach((b) => { if (b.boi_id) panier_boi.add(b.boi_id); });
         }
         if (data.phase === "synthese" && Array.isArray(data.boi_cites)) {
-          data.boi_cites.forEach((b) => { if (b.boi_id) panier_boi.add(b.boi_id); });
+          data.boi_cites.forEach((b) => {
+            if (b.boi_id) {
+              panier_boi.add(b.boi_id);
+              // Accumule pour l'export (première occurrence gagne)
+              if (!boi_cites_cumules.has(b.boi_id)) boi_cites_cumules.set(b.boi_id, b);
+            }
+          });
+          exportBtn.disabled = false;
         }
 
-        // Ajoute la réponse à l'historique
         messages.push({ role: "assistant", content: reponse });
 
-        // Affiche la bulle avec sources si synthèse
-        const sources = data.phase === "synthese" ? (data.boi_cites || []) : null;
-        appendBubble("assistant", reponse, sources);
+        if (data.phase === "synthese") {
+          appendAssistantBubble(reponse, {
+            boi_cites:   data.boi_cites   || [],
+            boi_ignores: data.boi_ignores || [],
+            articles_cgi: data.articles_cgi || [],
+          });
+        } else {
+          appendAssistantBubble(reponse);
+        }
 
       } catch (err) {
         hideLoading();
-        // Retire le dernier message utilisateur de l'historique pour permettre un retry propre
+        // Retire le message utilisateur de l'historique pour permettre un retry propre
         messages.pop();
-        appendBubble("assistant", `Une erreur est survenue : ${err.message}`);
+        appendError(`Une erreur est survenue : ${err.message}`);
       } finally {
         isLoading = false;
         sendBtn.disabled = false;
