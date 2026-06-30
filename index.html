@@ -3,264 +3,351 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BOFiP Assistant — Recherche</title>
+  <title>BOFiP Assistant</title>
   <style>
     :root {
-      --bg: #ffffff;
-      --text: #1a1a1a;
-      --muted: #6b7280;
+      --bg: #f3f4f6;
+      --surface: #ffffff;
       --border: #e5e7eb;
+      --text: #111827;
+      --muted: #6b7280;
       --accent: #2563eb;
       --accent-hover: #1d4ed8;
       --chip-bg: #f3f4f6;
-      --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+      --shadow: 0 1px 3px rgba(0,0,0,0.07);
     }
 
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
 
     body {
-      margin: 0;
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
-      line-height: 1.5;
+      line-height: 1.55;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
 
-    .container {
-      max-width: 760px;
+    /* ── Layout ── */
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      max-width: 880px;
       margin: 0 auto;
-      padding: 48px 20px 80px;
+      width: 100%;
+      background: var(--surface);
+      box-shadow: 0 0 0 1px var(--border);
     }
 
-    header h1 {
-      font-size: 1.75rem;
-      font-weight: 650;
-      margin: 0 0 4px;
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 13px 20px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
     }
 
-    header p {
-      margin: 0 0 28px;
+    .header-title h1 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .header-title p {
+      font-size: 0.78rem;
       color: var(--muted);
-      font-size: 0.95rem;
+      margin-top: 1px;
     }
 
-    .search-row {
+    #new-conv-btn {
+      padding: 6px 14px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--muted);
+      background: var(--chip-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+    #new-conv-btn:hover { background: var(--border); color: var(--text); }
+
+    /* ── Domain chips ── */
+    .domain-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 9px 20px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      align-items: center;
+    }
+
+    .domain-bar .label {
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-weight: 500;
+      margin-right: 2px;
+    }
+
+    .chip {
+      padding: 3px 11px;
+      font-size: 0.78rem;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--chip-bg);
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.15s;
+    }
+    .chip[aria-pressed="true"] {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .chip:hover:not([aria-pressed="true"]) { border-color: #9ca3af; color: var(--text); }
+
+    /* ── Conversation ── */
+    .conversation {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      scroll-behavior: smooth;
+    }
+
+    .empty-state {
+      margin: auto;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+      padding: 40px 20px;
+    }
+    .empty-state strong {
+      display: block;
+      font-size: 1rem;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    /* ── Messages ── */
+    .msg {
+      display: flex;
+      flex-direction: column;
+      max-width: 80%;
+    }
+    .msg.user { align-self: flex-end; align-items: flex-end; }
+    .msg.assistant { align-self: flex-start; align-items: flex-start; }
+
+    .msg-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+
+    .bubble {
+      padding: 11px 15px;
+      border-radius: 12px;
+      font-size: 0.92rem;
+      word-break: break-word;
+    }
+
+    .msg.user .bubble {
+      background: var(--accent);
+      color: #fff;
+      border-bottom-right-radius: 3px;
+    }
+
+    .msg.assistant .bubble {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      border-bottom-left-radius: 3px;
+      white-space: pre-wrap;
+    }
+
+    .msg.assistant.loading .bubble {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+    .loading-dots { animation: blink 1.2s ease-in-out infinite; }
+
+    /* ── Sources ── */
+    .sources-panel {
+      margin-top: 8px;
+      padding: 9px 13px;
+      background: #f8faff;
+      border: 1px solid #dbeafe;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      width: 100%;
+    }
+
+    .sources-panel .sources-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+
+    .source-item {
+      margin-bottom: 4px;
+      line-height: 1.4;
+    }
+
+    .source-item a {
+      color: var(--accent);
+      text-decoration: none;
+      font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+    .source-item a:hover { text-decoration: underline; }
+
+    .source-item .para {
+      color: var(--accent);
+      font-family: ui-monospace, monospace;
+      font-size: 0.75rem;
+    }
+
+    .source-item .source-titre {
+      color: var(--muted);
+    }
+
+    /* ── Input area ── */
+    .input-area {
       display: flex;
       gap: 8px;
-      margin-bottom: 16px;
+      padding: 12px 20px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+      align-items: flex-end;
+      background: var(--surface);
     }
 
-    .search-row input[type="text"] {
+    #input {
       flex: 1;
-      padding: 12px 14px;
-      font-size: 1rem;
+      padding: 10px 14px;
+      font-size: 0.93rem;
+      font-family: inherit;
       border: 1px solid var(--border);
       border-radius: 8px;
+      resize: none;
       outline: none;
+      line-height: 1.5;
+      min-height: 42px;
+      max-height: 180px;
+      overflow-y: auto;
       transition: border-color 0.15s;
+      background: var(--surface);
     }
+    #input:focus { border-color: var(--accent); }
+    #input:disabled { background: var(--bg); cursor: not-allowed; }
+    #input::placeholder { color: #9ca3af; }
 
-    .search-row input[type="text"]:focus {
-      border-color: var(--accent);
-    }
-
-    .search-row button {
-      padding: 12px 22px;
-      font-size: 1rem;
-      font-weight: 550;
+    #send-btn {
+      padding: 0 18px;
+      font-size: 0.9rem;
+      font-weight: 600;
       color: #fff;
       background: var(--accent);
       border: none;
       border-radius: 8px;
       cursor: pointer;
       transition: background 0.15s;
-    }
-
-    .search-row button:hover { background: var(--accent-hover); }
-    .search-row button:disabled { opacity: 0.6; cursor: default; }
-
-    .filters {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 32px;
-    }
-
-    .chip {
-      padding: 6px 14px;
-      font-size: 0.875rem;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      background: var(--chip-bg);
-      color: var(--text);
-      cursor: pointer;
-      user-select: none;
-      transition: all 0.15s;
-    }
-
-    .chip[aria-pressed="true"] {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #fff;
-    }
-
-    .status {
-      color: var(--muted);
-      font-size: 0.9rem;
-      margin-bottom: 20px;
-      min-height: 1.2em;
-    }
-
-    .results {
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-
-    .card {
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 18px 20px;
-      box-shadow: var(--card-shadow);
-      transition: border-color 0.15s;
-    }
-
-    .card:hover { border-color: #cbd5e1; }
-
-    .card-head {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 6px;
-    }
-
-    .card-head .boi-id {
-      font-size: 0.78rem;
-      font-weight: 600;
-      color: var(--accent);
-      font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-    }
-
-    .card-head .score {
-      font-size: 0.75rem;
-      color: var(--muted);
+      height: 42px;
       white-space: nowrap;
+      flex-shrink: 0;
     }
+    #send-btn:hover { background: var(--accent-hover); }
+    #send-btn:disabled { opacity: 0.5; cursor: default; }
 
-    .card h2 {
-      font-size: 1.05rem;
-      font-weight: 600;
-      margin: 0 0 8px;
-    }
-
-    .card .extrait {
-      color: #374151;
-      font-size: 0.92rem;
-      margin: 0 0 12px;
-    }
-
-    .card a.lien {
-      font-size: 0.875rem;
-      color: var(--accent);
-      text-decoration: none;
-      font-weight: 500;
-    }
-
-    .card a.lien:hover { text-decoration: underline; }
-
-    .empty {
-      color: var(--muted);
-      text-align: center;
-      padding: 40px 0;
-    }
-
-    .synthese-box {
-      background: #f0f7ff;
-      border: 1px solid #bfdbfe;
-      border-radius: 10px;
-      padding: 18px 20px;
-      margin-bottom: 24px;
-      font-size: 0.95rem;
-      line-height: 1.6;
-    }
-
-    .synthese-box h3 {
-      margin: 0 0 10px;
-      font-size: 0.8rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--accent);
-    }
-
-    .synthese-box p {
-      margin: 0;
-    }
-
-    .synthese-loading {
-      color: var(--muted);
-      font-style: italic;
-    }
-
-    .synthese-box a {
-      color: var(--accent);
-      font-weight: 500;
-      text-decoration: none;
-    }
-
-    .synthese-box a:hover {
-      text-decoration: underline;
+    .input-hint {
+      font-size: 0.72rem;
+      color: #9ca3af;
+      margin-top: 5px;
+      padding: 0 2px;
     }
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="app">
+
     <header>
-      <h1>BOFiP Assistant</h1>
-      <p>Recherche dans le Bulletin officiel des finances publiques.</p>
+      <div class="header-title">
+        <h1>BOFiP Assistant</h1>
+        <p>Doctrine fiscale française — usage professionnel</p>
+      </div>
+      <button id="new-conv-btn" type="button">Nouvelle conversation</button>
     </header>
 
-    <form class="search-row" id="search-form">
-      <input
-        type="text"
-        id="query"
-        placeholder="Rechercher (ex. : crédit d'impôt, TVA déductible…)"
-        autocomplete="off"
-        autofocus
-      />
-      <button type="submit" id="submit-btn">Rechercher</button>
-    </form>
-
-    <div class="filters" id="filters" role="group" aria-label="Filtrer par domaine">
-      <!-- Les puces de domaine sont injectées en JS -->
+    <div class="domain-bar" id="domain-bar">
+      <span class="label">Domaine&nbsp;:</span>
     </div>
 
-    <div class="status" id="status"></div>
-
-    <div id="synthese-box" class="synthese-box" style="display:none">
-      <h3>Synthèse</h3>
-      <p id="synthese-content"></p>
+    <div class="conversation" id="conversation">
+      <div class="empty-state" id="empty-state">
+        <strong>Posez votre question fiscale</strong>
+        L'assistant consulte la doctrine BOFiP en temps réel et vous guide<br>
+        à travers des questions de clarification avant de synthétiser.
+      </div>
     </div>
 
-    <div class="results" id="results"></div>
+    <div class="input-wrapper" style="flex-shrink:0">
+      <div class="input-area">
+        <textarea
+          id="input"
+          placeholder="Votre question fiscale… (Entrée pour envoyer, Maj+Entrée pour sauter une ligne)"
+          rows="1"
+          autocomplete="off"
+          spellcheck="true"
+        ></textarea>
+        <button id="send-btn" type="button">Envoyer</button>
+      </div>
+    </div>
+
   </div>
 
   <script>
     const DOMAINES = ["IS", "IR", "TVA", "BIC", "BNC", "RPPM", "ENR", "PAT"];
 
-    const filtersEl = document.getElementById("filters");
-    const formEl = document.getElementById("search-form");
-    const queryEl = document.getElementById("query");
-    const submitBtn = document.getElementById("submit-btn");
-    const statusEl = document.getElementById("status");
-    const resultsEl = document.getElementById("results");
-    const syntheseBox = document.getElementById("synthese-box");
-    const syntheseContent = document.getElementById("synthese-content");
+    // ── État ──
+    let messages = [];
+    let panier_boi = new Set();   // boi_id accumulés (pistes cadrage + cités synthèse)
+    let filtre_domaine = null;
+    let isLoading = false;
 
-    let activeDomaine = null;
+    // ── Refs DOM ──
+    const domainBarEl  = document.getElementById("domain-bar");
+    const convEl       = document.getElementById("conversation");
+    const emptyStateEl = document.getElementById("empty-state");
+    const inputEl      = document.getElementById("input");
+    const sendBtn      = document.getElementById("send-btn");
+    const newConvBtn   = document.getElementById("new-conv-btn");
 
-    // Construction des puces de filtre
+    // ── Puces de domaine ──
     DOMAINES.forEach((dom) => {
       const chip = document.createElement("button");
       chip.type = "button";
@@ -268,153 +355,214 @@
       chip.textContent = dom;
       chip.setAttribute("aria-pressed", "false");
       chip.addEventListener("click", () => {
-        const isActive = activeDomaine === dom;
-        // Réinitialise toutes les puces
-        filtersEl.querySelectorAll(".chip").forEach((c) =>
-          c.setAttribute("aria-pressed", "false")
-        );
-        if (isActive) {
-          activeDomaine = null;
-        } else {
-          activeDomaine = dom;
-          chip.setAttribute("aria-pressed", "true");
-        }
+        const wasActive = filtre_domaine === dom;
+        domainBarEl.querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", "false"));
+        filtre_domaine = wasActive ? null : dom;
+        if (!wasActive) chip.setAttribute("aria-pressed", "true");
       });
-      filtersEl.appendChild(chip);
+      domainBarEl.appendChild(chip);
     });
 
-    formEl.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const q = queryEl.value.trim();
-      if (!q) {
-        queryEl.focus();
-        return;
+    // ── Textarea auto-resize ──
+    inputEl.addEventListener("input", () => {
+      inputEl.style.height = "auto";
+      inputEl.style.height = Math.min(inputEl.scrollHeight, 180) + "px";
+    });
+
+    // ── Entrée pour envoyer ──
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        if (!isLoading) sendMessage();
       }
-      await search(q);
     });
 
-    function escapeHtml(str) {
-      return String(str ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
+    sendBtn.addEventListener("click", () => { if (!isLoading) sendMessage(); });
+
+    // ── Nouvelle conversation ──
+    newConvBtn.addEventListener("click", () => {
+      messages = [];
+      panier_boi = new Set();
+      convEl.innerHTML = "";
+      convEl.appendChild(emptyStateEl);
+      emptyStateEl.style.display = "";
+      inputEl.value = "";
+      inputEl.style.height = "auto";
+      inputEl.focus();
+    });
+
+    // ── Utilitaires ──
+    function escapeHtml(s) {
+      return String(s ?? "")
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     }
 
-    async function search(q) {
-      submitBtn.disabled = true;
-      statusEl.textContent = "Recherche en cours…";
-      resultsEl.innerHTML = "";
-      syntheseBox.style.display = "none";
-      syntheseContent.innerHTML = "";
+    function scrollToBottom() {
+      convEl.scrollTop = convEl.scrollHeight;
+    }
 
-      const params = new URLSearchParams({ q, limit: "20" });
-      if (activeDomaine) params.set("domaine", activeDomaine);
+    // ── Affiche une bulle ──
+    function appendBubble(role, content, sources) {
+      emptyStateEl.style.display = "none";
 
-      try {
-        const res = await fetch(`/search?${params}`);
-        if (!res.ok) throw new Error(`Erreur ${res.status}`);
-        const data = await res.json();
+      const msgDiv = document.createElement("div");
+      msgDiv.className = `msg ${role}`;
 
-        // Tolère plusieurs formes de réponse (tableau direct ou objet enveloppant)
-        let items = Array.isArray(data)
-          ? data
-          : data.results || data.hits || data.data || [];
+      const label = document.createElement("div");
+      label.className = "msg-label";
+      label.textContent = role === "user" ? "Vous" : "Assistant";
 
-        // Tri par date_publication décroissante
-        items = items.slice().sort((a, b) => {
-          const da = a.date_publication ? new Date(a.date_publication) : new Date(0);
-          const db = b.date_publication ? new Date(b.date_publication) : new Date(0);
-          return db - da;
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      // Texte brut escapé, retours à la ligne conservés via white-space:pre-wrap
+      bubble.textContent = content;
+
+      msgDiv.appendChild(label);
+      msgDiv.appendChild(bubble);
+
+      // Sources (phase synthèse uniquement)
+      if (sources && sources.length) {
+        const panel = document.createElement("div");
+        panel.className = "sources-panel";
+
+        const lbl = document.createElement("div");
+        lbl.className = "sources-label";
+        lbl.textContent = "Sources citées";
+        panel.appendChild(lbl);
+
+        sources.forEach((b) => {
+          const item = document.createElement("div");
+          item.className = "source-item";
+
+          const a = document.createElement("a");
+          a.href = b.url_bofip || "#";
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.textContent = b.boi_id || "";
+
+          item.appendChild(a);
+
+          if (b.paragraphe) {
+            const para = document.createElement("span");
+            para.className = "para";
+            para.textContent = " " + b.paragraphe;
+            item.appendChild(para);
+          }
+
+          if (b.titre) {
+            const titre = document.createElement("span");
+            titre.className = "source-titre";
+            titre.textContent = " — " + b.titre;
+            item.appendChild(titre);
+          }
+
+          panel.appendChild(item);
         });
 
-        renderResults(items);
-
-        // Lance la synthèse en arrière-plan sans bloquer les cartes
-        if (items.length) {
-          syntheseBox.style.display = "";
-          syntheseContent.innerHTML = '<span class="synthese-loading">Synthèse en cours…</span>';
-          fetchSynthese(q, items);
-        }
-      } catch (err) {
-        statusEl.textContent = `Une erreur est survenue : ${err.message}`;
-      } finally {
-        submitBtn.disabled = false;
+        msgDiv.appendChild(panel);
       }
+
+      convEl.appendChild(msgDiv);
+      scrollToBottom();
+      return msgDiv;
     }
 
-    async function fetchSynthese(q, items) {
+    // ── Indicateur de chargement ──
+    let loadingEl = null;
+
+    function showLoading() {
+      loadingEl = document.createElement("div");
+      loadingEl.className = "msg assistant loading";
+
+      const label = document.createElement("div");
+      label.className = "msg-label";
+      label.textContent = "Assistant";
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+
+      const dots = document.createElement("span");
+      dots.className = "loading-dots";
+      dots.textContent = "Recherche dans le BOFiP…";
+
+      bubble.appendChild(dots);
+      loadingEl.appendChild(label);
+      loadingEl.appendChild(bubble);
+
+      convEl.appendChild(loadingEl);
+      scrollToBottom();
+    }
+
+    function hideLoading() {
+      if (loadingEl) { loadingEl.remove(); loadingEl = null; }
+    }
+
+    // ── Envoi ──
+    async function sendMessage() {
+      const content = inputEl.value.trim();
+      if (!content) return;
+
+      // Ajoute le message utilisateur à l'historique et l'affiche
+      messages.push({ role: "user", content });
+      appendBubble("user", content);
+
+      // Réinitialise la saisie
+      inputEl.value = "";
+      inputEl.style.height = "auto";
+
+      // État de chargement
+      isLoading = true;
+      sendBtn.disabled = true;
+      inputEl.disabled = true;
+      showLoading();
+
       try {
-        const res = await fetch("/synthese", {
+        const resp = await fetch("/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: q, items }),
+          body: JSON.stringify({
+            messages,
+            paniers_boi: [...panier_boi],
+            filtre_domaine,
+          }),
         });
-        const data = await res.json();
-        if (!res.ok || !data.synthese) {
-          syntheseContent.textContent = data.error || "Impossible de générer la synthèse.";
-          return;
+
+        const data = await resp.json();
+        hideLoading();
+
+        if (!resp.ok || data.error) {
+          throw new Error(data.error || `HTTP ${resp.status}`);
         }
 
-        // Construit un index boi_id → url_bofip pour les liens cliquables
-        const urlMap = {};
-        items.forEach((item) => {
-          if (item.boi_id && item.url_bofip) urlMap[item.boi_id] = item.url_bofip;
-        });
+        const reponse = data.reponse || "";
 
-        syntheseContent.innerHTML = linkifyBoi(data.synthese, urlMap);
+        // Mise à jour du panier
+        if (data.phase === "cadrage" && Array.isArray(data.boi_pistes)) {
+          data.boi_pistes.forEach((b) => { if (b.boi_id) panier_boi.add(b.boi_id); });
+        }
+        if (data.phase === "synthese" && Array.isArray(data.boi_cites)) {
+          data.boi_cites.forEach((b) => { if (b.boi_id) panier_boi.add(b.boi_id); });
+        }
+
+        // Ajoute la réponse à l'historique
+        messages.push({ role: "assistant", content: reponse });
+
+        // Affiche la bulle avec sources si synthèse
+        const sources = data.phase === "synthese" ? (data.boi_cites || []) : null;
+        appendBubble("assistant", reponse, sources);
+
       } catch (err) {
-        syntheseContent.textContent = "Erreur lors de la synthèse.";
+        hideLoading();
+        // Retire le dernier message utilisateur de l'historique pour permettre un retry propre
+        messages.pop();
+        appendBubble("assistant", `Une erreur est survenue : ${err.message}`);
+      } finally {
+        isLoading = false;
+        sendBtn.disabled = false;
+        inputEl.disabled = false;
+        inputEl.focus();
       }
-    }
-
-    function linkifyBoi(text, urlMap) {
-      // Échappe d'abord le HTML, puis remplace les BOI-xxx par des liens
-      const escaped = escapeHtml(text);
-      return escaped.replace(/BOI-[A-Z0-9]+-[A-Z0-9-]+/g, (match) => {
-        const url = urlMap[match];
-        return url
-          ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${match}</a>`
-          : match;
-      });
-    }
-
-    function renderResults(items) {
-      if (!items.length) {
-        statusEl.textContent = "";
-        resultsEl.innerHTML =
-          '<div class="empty">Aucun résultat trouvé.</div>';
-        return;
-      }
-
-      statusEl.textContent = `${items.length} résultat${
-        items.length > 1 ? "s" : ""
-      }`;
-
-      resultsEl.innerHTML = items
-        .map((item) => {
-          const boiId = escapeHtml(item.boi_id ?? "");
-          const titre = escapeHtml(item.titre ?? "Sans titre");
-          const extrait = escapeHtml(item.extrait ?? "");
-          const url = item.url_bofip ?? "#";
-          const score =
-            item.score != null ? Number(item.score).toFixed(2) : null;
-
-          return `
-            <article class="card">
-              <div class="card-head">
-                ${boiId ? `<span class="boi-id">${boiId}</span>` : "<span></span>"}
-                ${score != null ? `<span class="score">Score : ${score}</span>` : ""}
-              </div>
-              <h2>${titre}</h2>
-              ${extrait ? `<p class="extrait">${extrait}</p>` : ""}
-              <a class="lien" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
-                Consulter sur le BOFiP →
-              </a>
-            </article>
-          `;
-        })
-        .join("");
     }
   </script>
 </body>
