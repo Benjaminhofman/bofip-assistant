@@ -392,8 +392,8 @@
     <div class="conversation" id="conversation">
       <div class="empty-state" id="empty-state">
         <strong>Posez votre question fiscale</strong>
-        L'assistant consulte la doctrine BOFiP en temps réel et vous guide<br>
-        à travers des questions de clarification avant de synthétiser.
+        L'assistant consulte la doctrine BOFiP en temps réel et vous répond<br>
+        avec une synthèse sourcée directement.
       </div>
     </div>
 
@@ -749,31 +749,24 @@
 
         const reponse = data.reponse || "";
 
-        // Mise à jour du panier
-        if (data.phase === "cadrage" && Array.isArray(data.boi_pistes)) {
-          data.boi_pistes.forEach((b) => { if (b.boi_id) panier_boi.add(b.boi_id); });
-        }
-        if (data.phase === "synthese" && Array.isArray(data.boi_cites)) {
+        // Mise à jour du panier et des sources cumulées
+        if (Array.isArray(data.boi_cites)) {
           data.boi_cites.forEach((b) => {
             if (b.boi_id) {
               panier_boi.add(b.boi_id);
               if (!boi_cites_cumules.has(b.boi_id)) boi_cites_cumules.set(b.boi_id, b);
             }
           });
-          exportBtn.disabled = false;
+          if (data.boi_cites.length) exportBtn.disabled = false;
         }
 
         messages.push({ role: "assistant", content: reponse });
 
-        if (data.phase === "synthese") {
-          appendAssistantBubble(reponse, {
-            boi_cites:    data.boi_cites    || [],
-            boi_ignores:  data.boi_ignores  || [],
-            articles_cgi: data.articles_cgi || [],
-          });
-        } else {
-          appendAssistantBubble(reponse);
-        }
+        appendAssistantBubble(reponse, {
+          boi_cites:    data.boi_cites    || [],
+          boi_ignores:  data.boi_ignores  || [],
+          articles_cgi: data.articles_cgi || [],
+        });
 
       } catch (err) {
         hideLoading();

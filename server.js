@@ -18,18 +18,16 @@ const PORT = process.env.PORT || 3000;
 const UPSTREAM = "https://api.bofip.dev/v1/search";
 
 // --- Config ---
-const MODELE_CLASSIFICATION = "gpt-4o-mini";
 const MODELE_SYNTHESE = "gpt-4o";
 const MAX_BOI_TEXTE_COMPLET = 3;
 const MAX_BOI_EXTRAITS = 5;
-const MAX_BOI_CADRAGE = 6;
 const TRONCATURE_BOI = 8000;
 const TIMEOUT_OPENAI = 30000;
 
 // --- Caches en mémoire avec TTL 24 h ---
 const TTL = 24 * 60 * 60 * 1000;
 
-const cacheBoi = new Map();       // boi_id → { data, expireAt }
+const cacheBoi = new Map();        // boi_id → { data, expireAt }
 const cacheHistorique = new Map(); // boi_id → { data, expireAt }
 
 const BOFIP_HEADERS = {
@@ -120,7 +118,7 @@ app.get("/search", async (req, res) => {
   }
 
   try {
-    console.log("Appel vers:", upstreamUrl.toString(), "avec clé:", apiKey.substring(0, 8));
+    console.log("Appel vers:", upstreamUrl.toString(), "avec clé:", process.env.BOFIP_API_KEY.substring(0, 8));
     const upstreamRes = await fetch(upstreamUrl, {
       method: "GET",
       headers: {
@@ -221,21 +219,8 @@ RIGUEUR PROFESSIONNELLE
 - Structure la synthèse (conditions, régime, exceptions). Distingue conditions cumulatives et alternatives.
 - Signale (a) les points où les BOI se complètent ou se CONTREDISENT ; (b) les angles pour lesquels AUCUN texte fourni n'apporte de réponse.
 - Si une information n'est pas dans les textes fournis, écris-le. Aucune extrapolation.
-- Reste strictement factuel et neutre : synthèse doctrinale, jamais de conseil personnalisé.`;
-
-const SYSTEM_CADRAGE = `Tu es un assistant de recherche en doctrine fiscale française pour un professionnel du chiffre et du droit. L'utilisateur ouvre un nouveau sujet. On te fournit ci-dessous des EXTRAITS de la doctrine BOFiP réellement trouvée sur ce sujet.
-- Appuie-toi sur ces extraits pour identifier les VRAIES distinctions doctrinales qui font varier la réponse (régimes, conditions cumulatives ou alternatives, seuils, cas particuliers, options) telles qu'elles apparaissent dans la doctrine actuelle.
-- Pose exactement TROIS questions de clarification numérotées (ou QUATRE si le sujet est d'un niveau expert le justifiant), ancrées dans ces distinctions réelles. Rien d'autre : pas d'ébauche de réponse, pas de synthèse, pas encore de citation.
-- Formule des questions de niveau professionnel, précises.
-- Si les extraits fournis sont vides ou hors sujet, pose des questions de cadrage fondées sur les familles de distinctions usuelles (nature et régime du contribuable, conditions, cas particulier, dispositif visé) et indique que la doctrine sera recherchée une fois la demande précisée.
-- Termine en invitant l'utilisateur à répondre.`;
-
-const SYSTEM_CLASSIFICATION = `Tu es un routeur pour un assistant de doctrine fiscale destiné à des professionnels (experts-comptables, juristes, fiscalistes). À partir de l'historique, réponds UNIQUEMENT en JSON valide.
-- phase='cadrage' si l'utilisateur ouvre un NOUVEAU sujet fiscal pas encore clarifié (ou premier message).
-- phase='synthese' s'il répond aux questions de clarification OU pose un suivi sur un sujet déjà traité.
-- niveau_expert=true si le sujet est techniquement pointu (démembrement, intégration fiscale, prix de transfert, régimes optionnels, dispositifs de faveur) justifiant une précision supplémentaire.
-- requete_recherche : mots-clés doctrinaux pertinents dans TOUS les cas (en cadrage, déduis-les du sujet brut ; en synthèse, du sujet + précisions). Jamais null si un sujet fiscal est identifiable.
-- domaine : code domaine fiscal (IS, IR, TVA, BIC, BNC, RPPM, ENR, PAT) si clairement identifiable, sinon null.`;
+- Reste strictement factuel et neutre : synthèse doctrinale, jamais de conseil personnalisé.
+- Si aucun document BOFiP n'a été trouvé, indique-le clairement et invite l'utilisateur à préciser son contexte (régime, opération visée, situation) dans une phrase libre — sans poser de questions numérotées imposées.`;
 
 function postTraiterReponse(reponse, bois_synthese) {
   // Index boi_id → item complet pour lookup rapide
@@ -381,16 +366,6 @@ async function searchBofip(q, domaine, limit) {
   }
 }
 
-async function classifier(messages, openaiKey) {
-  const data = await openaiCall(openaiKey, {
-    model: MODELE_CLASSIFICATION,
-    temperature: 0,
-    response_format: { type: "json_object" },
-    messages: [{ role: "system", content: SYSTEM_CLASSIFICATION }, ...messages],
-  });
-  return JSON.parse(data.choices[0].message.content);
-}
-
 app.post("/chat", async (req, res) => {
   const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) {
@@ -403,178 +378,111 @@ app.post("/chat", async (req, res) => {
   }
 
   try {
-    const classification = await classifier(messages, openaiKey);
-    console.log(`[${classification.phase}] requete:"${classification.requete_recherche}" domaine:${classification.domaine || "null"}`);
+    // Requête de recherche : derniers messages utilisateur (contexte glissant)
+    const userMsgs = messages.filter((m) => m.role === "user");
+    const searchQuery = userMsgs.slice(-2).map((m) => m.content).join(" ").slice(0, 400);
 
-    if (classification.phase === "cadrage") {
-      const rawItems = await searchBofip(
-        classification.requete_recherche,
-        classification.domaine || filtre_domaine || null,
-        MAX_BOI_CADRAGE + 5
-      );
+    const domaine = filtre_domaine || null;
+    console.log(`[synthese] requete:"${searchQuery.slice(0, 80)}" domaine:${domaine || "null"}`);
 
-      const sorted = rawItems.slice().sort((a, b) => {
-        const da = a.date_publication ? new Date(a.date_publication) : new Date(0);
-        const db = b.date_publication ? new Date(b.date_publication) : new Date(0);
-        return db - da;
-      });
+    // 1. Recherche BOFiP
+    const rawItems = await searchBofip(searchQuery, domaine, MAX_BOI_EXTRAITS + 10);
 
-      const boi_pistes = sorted.slice(0, MAX_BOI_CADRAGE).map((item) => ({
-        boi_id: item.boi_id,
-        titre: item.titre,
-        extrait: item.extrait,
-        url_bofip: item.url_bofip,
-        date_publication: item.date_publication,
-      }));
+    // 2. Tri par date décroissante
+    rawItems.sort((a, b) => {
+      const da = a.date_publication ? new Date(a.date_publication) : new Date(0);
+      const db = b.date_publication ? new Date(b.date_publication) : new Date(0);
+      return db - da;
+    });
 
-      console.log(`[cadrage] ${boi_pistes.length}/${MAX_BOI_CADRAGE} BOI trouvés${!boi_pistes.length ? " — questions génériques" : ""}`);
+    // 3. MAX_BOI_EXTRAITS premiers + tout boi_id des paniers non déjà présent
+    const selection = rawItems.slice(0, MAX_BOI_EXTRAITS);
+    const selectionIds = new Set(selection.map((i) => i.boi_id));
 
-      const contextCadrage = boi_pistes.length
-        ? boi_pistes
-            .map((item, i) => `[${i + 1}] ${item.boi_id} — ${item.titre}\n${item.extrait || ""}`)
-            .join("\n\n")
-        : "";
-
-      const lastMsg = messages[messages.length - 1];
-      const augmentedMessages = [
-        { role: "system", content: SYSTEM_CADRAGE },
-        ...messages.slice(0, -1),
-        {
-          role: lastMsg.role,
-          content: boi_pistes.length
-            ? `EXTRAITS BOFiP pertinents :\n\n${contextCadrage}\n\n---\n\nDemande : ${lastMsg.content}`
-            : lastMsg.content,
-        },
-      ];
-
-      const data = await openaiCall(openaiKey, {
-        model: MODELE_SYNTHESE,
-        temperature: 0,
-        messages: augmentedMessages,
-      });
-
-      return res.json({
-        reponse: data.choices[0].message.content,
-        phase: "cadrage",
-        boi_pistes,
-      });
+    for (const entry of paniers_boi || []) {
+      const boiId = typeof entry === "string" ? entry : entry?.boi_id;
+      if (boiId && !selectionIds.has(boiId)) {
+        const found = rawItems.find((i) => i.boi_id === boiId);
+        selection.push(
+          found || { boi_id: boiId, titre: "", extrait: "", url_bofip: null, date_publication: null }
+        );
+        selectionIds.add(boiId);
+      }
     }
 
-    if (classification.phase === "synthese") {
-      const domaine = classification.domaine || filtre_domaine || null;
-
-      // 1. Recherche BOFiP
-      const rawItems = await searchBofip(
-        classification.requete_recherche,
-        domaine,
-        MAX_BOI_EXTRAITS + 10
-      );
-
-      // 2. Tri par date décroissante
-      rawItems.sort((a, b) => {
-        const da = a.date_publication ? new Date(a.date_publication) : new Date(0);
-        const db = b.date_publication ? new Date(b.date_publication) : new Date(0);
-        return db - da;
-      });
-
-      // 3. MAX_BOI_EXTRAITS premiers + tout boi_id des paniers non déjà présent
-      const selection = rawItems.slice(0, MAX_BOI_EXTRAITS);
-      const selectionIds = new Set(selection.map((i) => i.boi_id));
-
-      for (const entry of paniers_boi || []) {
-        const boiId = typeof entry === "string" ? entry : entry?.boi_id;
-        if (boiId && !selectionIds.has(boiId)) {
-          const found = rawItems.find((i) => i.boi_id === boiId);
-          selection.push(
-            found || { boi_id: boiId, titre: "", extrait: "", url_bofip: null, date_publication: null }
-          );
-          selectionIds.add(boiId);
-        }
-      }
-
-      // 4. Texte complet + historique pour les MAX_BOI_TEXTE_COMPLET premiers, extrait court pour les autres
-      const bois_synthese = await Promise.all(
-        selection.map(async (item, i) => {
-          if (i < MAX_BOI_TEXTE_COMPLET) {
-            const [complet, historique] = await Promise.all([
-              getBoiComplet(item.boi_id),
-              getHistoriqueBoi(item.boi_id),
-            ]);
-            const raw = complet &&
-              (complet.texte || complet.contenu || complet.text || complet.body || null);
-            const datePublication = item.date_publication || complet?.date_publication || null;
-            return {
-              boi_id: item.boi_id,
-              titre: item.titre || complet?.titre || "",
-              url_bofip: item.url_bofip || complet?.url_bofip || null,
-              date_publication: datePublication,
-              texte_complet: raw ? String(raw).slice(0, TRONCATURE_BOI) : null,
-              extrait: item.extrait || null,
-              note_version: buildNoteVersion(item.boi_id, datePublication, historique),
-            };
-          }
+    // 4. Texte complet + historique pour les MAX_BOI_TEXTE_COMPLET premiers
+    const bois_synthese = await Promise.all(
+      selection.map(async (item, i) => {
+        if (i < MAX_BOI_TEXTE_COMPLET) {
+          const [complet, historique] = await Promise.all([
+            getBoiComplet(item.boi_id),
+            getHistoriqueBoi(item.boi_id),
+          ]);
+          const raw = complet &&
+            (complet.texte || complet.contenu || complet.text || complet.body || null);
+          const datePublication = item.date_publication || complet?.date_publication || null;
           return {
             boi_id: item.boi_id,
-            titre: item.titre,
-            extrait: item.extrait,
-            url_bofip: item.url_bofip,
-            date_publication: item.date_publication,
-            texte_complet: null,
-            note_version: null,
+            titre: item.titre || complet?.titre || "",
+            url_bofip: item.url_bofip || complet?.url_bofip || null,
+            date_publication: datePublication,
+            texte_complet: raw ? String(raw).slice(0, TRONCATURE_BOI) : null,
+            extrait: item.extrait || null,
+            note_version: buildNoteVersion(item.boi_id, datePublication, historique),
           };
-        })
-      );
+        }
+        return {
+          boi_id: item.boi_id,
+          titre: item.titre,
+          extrait: item.extrait,
+          url_bofip: item.url_bofip,
+          date_publication: item.date_publication,
+          texte_complet: null,
+          note_version: null,
+        };
+      })
+    );
 
-      console.log(`[synthese] ${selection.length} BOI sélectionnés (recherche: ${rawItems.length})`);
+    console.log(`[synthese] ${selection.length} BOI sélectionnés (recherche: ${rawItems.length})`);
 
-      // Indisponibilité documentaire : pas de contexte, on ne fait pas l'appel OpenAI
-      if (!selection.length) {
-        return res.json({
-          reponse: "La recherche documentaire est temporairement indisponible. Merci de reformuler votre question ou de réessayer dans quelques instants.",
-          phase: "synthese",
-          boi_cites: [],
-          boi_ignores: [],
-          articles_cgi: [],
-        });
-      }
+    // Contexte : documents trouvés ou message d'absence (le modèle invite alors à préciser)
+    const notes_version = bois_synthese
+      .filter((b) => b.note_version)
+      .map((b) => b.note_version)
+      .join("\n");
 
-      const notes_version = bois_synthese
-        .filter((b) => b.note_version)
-        .map((b) => b.note_version)
-        .join("\n");
+    const contextSynthese = selection.length
+      ? buildContextSynthese(bois_synthese, notes_version)
+      : "AUCUN DOCUMENT BOFiP TROUVÉ pour cette requête. Indique-le à l'utilisateur et invite-le à préciser son contexte (régime applicable, situation, opération visée) dans une phrase libre — sans poser de questions numérotées.";
 
-      const contextSynthese = buildContextSynthese(bois_synthese, notes_version);
-      const lastMsg = messages[messages.length - 1];
-      const augmentedMessages = [
-        { role: "system", content: SYSTEM_SYNTHESE },
-        ...messages.slice(0, -1),
-        {
-          role: lastMsg.role,
-          content: `${contextSynthese}\n\n---\n\nDemande : ${lastMsg.content}`,
-        },
-      ];
+    const lastMsg = messages[messages.length - 1];
+    const augmentedMessages = [
+      { role: "system", content: SYSTEM_SYNTHESE },
+      ...messages.slice(0, -1),
+      {
+        role: lastMsg.role,
+        content: `${contextSynthese}\n\n---\n\nDemande : ${lastMsg.content}`,
+      },
+    ];
 
-      const data = await openaiCall(openaiKey, {
-        model: MODELE_SYNTHESE,
-        temperature: 0,
-        messages: augmentedMessages,
-      });
+    const data = await openaiCall(openaiKey, {
+      model: MODELE_SYNTHESE,
+      temperature: 0,
+      messages: augmentedMessages,
+    });
 
-      const reponse = data.choices[0].message.content;
-      const { boi_cites, boi_ignores, articles_cgi } = postTraiterReponse(reponse, bois_synthese);
+    const reponse = data.choices[0].message.content;
+    const { boi_cites, boi_ignores, articles_cgi } = postTraiterReponse(reponse, bois_synthese);
 
-      console.log(`[synthese] ${boi_cites.length} BOI cités | ${boi_ignores.length} ignorés`);
+    console.log(`[synthese] ${boi_cites.length} BOI cités | ${boi_ignores.length} ignorés`);
 
-      return res.json({
-        reponse,
-        phase: "synthese",
-        boi_cites,
-        boi_ignores,
-        articles_cgi,
-      });
-    }
-
-    res.json({ classification });
+    return res.json({
+      reponse,
+      phase: "synthese",
+      boi_cites,
+      boi_ignores,
+      articles_cgi,
+    });
   } catch (err) {
     res.status(502).json({ error: String(err.message) });
   }
