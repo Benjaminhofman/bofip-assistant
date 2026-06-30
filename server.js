@@ -1,7 +1,13 @@
 // Serveur Express : proxie GET /search vers l'API BOFiP en injectant la clé API.
 // Transmet q, domaine, limit depuis la query string.
 
-require("dotenv").config();
+// Charge .env s'il existe ; ne plante pas s'il est absent (dotenv ne lève pas,
+// mais on garde un try/catch par sécurité).
+try {
+  require("dotenv").config();
+} catch (err) {
+  console.warn("Impossible de charger .env :", err.message);
+}
 
 const path = require("path");
 const express = require("express");
@@ -73,4 +79,5 @@ app.get("/search", async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Serveur BOFiP à l'écoute sur le port ${PORT}`);
+  console.log("BOFIP_API_KEY présente au démarrage:", !!process.env.BOFIP_API_KEY);
 });
