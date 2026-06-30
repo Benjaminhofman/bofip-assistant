@@ -56,6 +56,7 @@ app.get("/search", async (req, res) => {
   }
 
   try {
+    console.log("Appel vers:", upstreamUrl.toString(), "avec clé:", apiKey.substring(0, 8));
     const upstreamRes = await fetch(upstreamUrl, {
       method: "GET",
       headers: {
