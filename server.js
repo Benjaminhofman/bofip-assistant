@@ -30,6 +30,8 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use(express.json());
+
 // Sert les fichiers statiques du dossier racine
 app.use(express.static(__dirname));
 
@@ -76,6 +78,58 @@ app.get("/search", async (req, res) => {
       error: "Échec de la requête amont",
       detail: String(err),
     });
+  }
+});
+
+const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+
+app.post("/synthese", async (req, res) => {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey) {
+    return res.status(500).json({ error: "Clé OPENAI_API_KEY non configurée" });
+  }
+
+  const { query, items } = req.body;
+  if (!items || !items.length) {
+    return res.status(400).json({ error: "Aucun résultat à synthétiser" });
+  }
+
+  const context = items.slice(0, 10).map((item, i) =>
+    `[${i + 1}] ${item.boi_id} — ${item.titre}\n${item.extrait || ""}`
+  ).join("\n\n");
+
+  const prompt = `Tu es un assistant fiscal expert. L'utilisateur a recherché : "${query}".
+
+Voici les extraits de ${items.length} documents BOFiP pertinents :
+
+${context}
+
+Rédige une synthèse fiscale claire et structurée en français, en quelques phrases concises, qui répond directement à la question de l'utilisateur. Cite explicitement les références BOI (ex. : BOI-TVA-BASE-10-10) utilisées. Ne répète pas les extraits mot pour mot.`;
+
+  try {
+    const openaiRes = await fetch(OPENAI_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openaiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        max_tokens: 600,
+      }),
+    });
+
+    const data = await openaiRes.json();
+    if (!openaiRes.ok) {
+      return res.status(openaiRes.status).json({ error: data.error?.message || "Erreur OpenAI" });
+    }
+
+    const synthese = data.choices?.[0]?.message?.content || "";
+    res.json({ synthese });
+  } catch (err) {
+    res.status(502).json({ error: "Échec de la requête OpenAI", detail: String(err) });
   }
 });
 

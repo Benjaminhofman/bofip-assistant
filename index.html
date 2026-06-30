@@ -174,6 +174,44 @@
       text-align: center;
       padding: 40px 0;
     }
+
+    .synthese-box {
+      background: #f0f7ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 10px;
+      padding: 18px 20px;
+      margin-bottom: 24px;
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    .synthese-box h3 {
+      margin: 0 0 10px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--accent);
+    }
+
+    .synthese-box p {
+      margin: 0;
+    }
+
+    .synthese-loading {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .synthese-box a {
+      color: var(--accent);
+      font-weight: 500;
+      text-decoration: none;
+    }
+
+    .synthese-box a:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -200,6 +238,11 @@
 
     <div class="status" id="status"></div>
 
+    <div id="synthese-box" class="synthese-box" style="display:none">
+      <h3>Synthèse</h3>
+      <p id="synthese-content"></p>
+    </div>
+
     <div class="results" id="results"></div>
   </div>
 
@@ -212,6 +255,8 @@
     const submitBtn = document.getElementById("submit-btn");
     const statusEl = document.getElementById("status");
     const resultsEl = document.getElementById("results");
+    const syntheseBox = document.getElementById("synthese-box");
+    const syntheseContent = document.getElementById("synthese-content");
 
     let activeDomaine = null;
 
@@ -260,27 +305,78 @@
       submitBtn.disabled = true;
       statusEl.textContent = "Recherche en cours…";
       resultsEl.innerHTML = "";
+      syntheseBox.style.display = "none";
+      syntheseContent.innerHTML = "";
 
       const params = new URLSearchParams({ q, limit: "20" });
       if (activeDomaine) params.set("domaine", activeDomaine);
 
       try {
         const res = await fetch(`/search?${params}`);
-        if (!res.ok) {
-          throw new Error(`Erreur ${res.status}`);
-        }
+        if (!res.ok) throw new Error(`Erreur ${res.status}`);
         const data = await res.json();
+
         // Tolère plusieurs formes de réponse (tableau direct ou objet enveloppant)
-        const items = Array.isArray(data)
+        let items = Array.isArray(data)
           ? data
           : data.results || data.hits || data.data || [];
 
+        // Tri par date_publication décroissante
+        items = items.slice().sort((a, b) => {
+          const da = a.date_publication ? new Date(a.date_publication) : new Date(0);
+          const db = b.date_publication ? new Date(b.date_publication) : new Date(0);
+          return db - da;
+        });
+
         renderResults(items);
+
+        // Lance la synthèse en arrière-plan sans bloquer les cartes
+        if (items.length) {
+          syntheseBox.style.display = "";
+          syntheseContent.innerHTML = '<span class="synthese-loading">Synthèse en cours…</span>';
+          fetchSynthese(q, items);
+        }
       } catch (err) {
         statusEl.textContent = `Une erreur est survenue : ${err.message}`;
       } finally {
         submitBtn.disabled = false;
       }
+    }
+
+    async function fetchSynthese(q, items) {
+      try {
+        const res = await fetch("/synthese", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: q, items }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.synthese) {
+          syntheseContent.textContent = data.error || "Impossible de générer la synthèse.";
+          return;
+        }
+
+        // Construit un index boi_id → url_bofip pour les liens cliquables
+        const urlMap = {};
+        items.forEach((item) => {
+          if (item.boi_id && item.url_bofip) urlMap[item.boi_id] = item.url_bofip;
+        });
+
+        syntheseContent.innerHTML = linkifyBoi(data.synthese, urlMap);
+      } catch (err) {
+        syntheseContent.textContent = "Erreur lors de la synthèse.";
+      }
+    }
+
+    function linkifyBoi(text, urlMap) {
+      // Échappe d'abord le HTML, puis remplace les BOI-xxx par des liens
+      const escaped = escapeHtml(text);
+      return escaped.replace(/BOI-[A-Z0-9]+-[A-Z0-9-]+/g, (match) => {
+        const url = urlMap[match];
+        return url
+          ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${match}</a>`
+          : match;
+      });
     }
 
     function renderResults(items) {
