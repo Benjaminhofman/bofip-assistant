@@ -209,6 +209,45 @@ const SYSTEM_CLASSIFICATION = `Tu es un routeur pour un assistant de doctrine fi
 - requete_recherche : mots-clés doctrinaux pertinents dans TOUS les cas (en cadrage, déduis-les du sujet brut ; en synthèse, du sujet + précisions). Jamais null si un sujet fiscal est identifiable.
 - domaine : code domaine fiscal (IS, IR, TVA, BIC, BNC, RPPM, ENR, PAT) si clairement identifiable, sinon null.`;
 
+function buildNoteVersion(boiId, datePublication, historique) {
+  const versions = !historique
+    ? []
+    : Array.isArray(historique)
+    ? historique
+    : historique.versions || historique.historique || [];
+
+  if (!versions.length) return `${boiId} : historique non disponible.`;
+
+  // Tri du plus récent au plus ancien
+  const sorted = versions.slice().sort((a, b) => {
+    const da = new Date(a.date_debut || a.date_publication || a.date || 0);
+    const db = new Date(b.date_debut || b.date_publication || b.date || 0);
+    return db - da;
+  });
+
+  const latest = sorted[0];
+  const latestDateRaw = latest.date_debut || latest.date_publication || latest.date || null;
+  const latestDate = latestDateRaw ? new Date(latestDateRaw) : null;
+  const injectedDate = datePublication ? new Date(datePublication) : null;
+
+  const statut = latest.statut
+    ? latest.statut
+    : latest.date_fin
+    ? "rapporté"
+    : "en vigueur";
+
+  const plusRecente =
+    latestDate && injectedDate && latestDate > injectedDate;
+
+  let note = `${boiId} : statut "${statut}"`;
+  if (plusRecente) {
+    note += `, version plus récente disponible (${latestDateRaw}) — la version injectée peut être antérieure`;
+  } else {
+    note += ", version courante injectée";
+  }
+  return note + ".";
+}
+
 async function searchBofip(q, domaine, limit) {
   const apiKey = process.env.BOFIP_API_KEY;
   if (!apiKey || !q) return [];
@@ -365,20 +404,25 @@ app.post("/chat", async (req, res) => {
         }
       }
 
-      // 4. Texte complet (tronqué) pour les MAX_BOI_TEXTE_COMPLET premiers, extrait court pour les autres
+      // 4. Texte complet + historique pour les MAX_BOI_TEXTE_COMPLET premiers, extrait court pour les autres
       const bois_synthese = await Promise.all(
         selection.map(async (item, i) => {
           if (i < MAX_BOI_TEXTE_COMPLET) {
-            const complet = await getBoiComplet(item.boi_id);
+            const [complet, historique] = await Promise.all([
+              getBoiComplet(item.boi_id),
+              getHistoriqueBoi(item.boi_id),
+            ]);
             const raw = complet &&
               (complet.texte || complet.contenu || complet.text || complet.body || null);
+            const datePublication = item.date_publication || complet?.date_publication || null;
             return {
               boi_id: item.boi_id,
               titre: item.titre || complet?.titre || "",
               url_bofip: item.url_bofip || complet?.url_bofip || null,
-              date_publication: item.date_publication || complet?.date_publication || null,
+              date_publication: datePublication,
               texte_complet: raw ? String(raw).slice(0, TRONCATURE_BOI) : null,
               extrait: item.extrait || null,
+              note_version: buildNoteVersion(item.boi_id, datePublication, historique),
             };
           }
           return {
@@ -388,12 +432,19 @@ app.post("/chat", async (req, res) => {
             url_bofip: item.url_bofip,
             date_publication: item.date_publication,
             texte_complet: null,
+            note_version: null,
           };
         })
       );
 
+      // Rassemble les notes de version des BOI avec texte complet pour le prompt
+      const notes_version = bois_synthese
+        .filter((b) => b.note_version)
+        .map((b) => b.note_version)
+        .join("\n");
+
       // Appel OpenAI synthese : à implémenter
-      return res.json({ classification, bois_synthese });
+      return res.json({ classification, bois_synthese, notes_version });
     }
 
     res.json({ classification });
